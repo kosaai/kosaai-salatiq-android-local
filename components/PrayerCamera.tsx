@@ -38,6 +38,7 @@ type PoseCandidate = {
 type LiveTimings = {
   capture: number;
   resize: number;
+  frameSizeKb: number;
   uploadPredict: number;
   total: number;
 };
@@ -360,8 +361,11 @@ export function PrayerCamera({
           return;
         }
 
+        let frameSizeKb = 0;
         const uploadPredictStartedAt = performance.now();
-        const result = await predictImage(uploadUri, requestController.signal);
+        const result = await predictImage(uploadUri, requestController.signal, (size) => {
+          frameSizeKb = size;
+        });
         const uploadPredict = Math.round(performance.now() - uploadPredictStartedAt);
         const total = Math.round(performance.now() - cycleStartedAt);
         if (__DEV__) {
@@ -370,7 +374,7 @@ export function PrayerCamera({
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
 
-        setLiveTimings({ capture, resize, uploadPredict, total });
+        setLiveTimings({ capture, resize, frameSizeKb, uploadPredict, total });
 
         if (result.status === 'ok') {
           const pose = result.person_detected ? result.pose ?? null : null;
@@ -506,6 +510,7 @@ export function PrayerCamera({
           <Text style={[styles.liveTimingDebugLabel, { color: theme.brassSoft }]}>DEBUG ACTIVE</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>capture: {liveTimings?.capture ?? '—'} ms</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>resize: {liveTimings?.resize ?? '—'} ms</Text>
+          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>frame: {liveTimings ? liveTimings.frameSizeKb.toFixed(1) : '—'} KB</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>upload+predict: {liveTimings?.uploadPredict ?? '—'} ms</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>total: {liveTimings?.total ?? '—'} ms</Text>
         </View>

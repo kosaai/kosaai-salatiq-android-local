@@ -90,7 +90,11 @@ function parsePredictionResponse(value: unknown): PredictionResponse {
 }
 
 /** Sends one cached camera image to the FastAPI /predict endpoint. */
-export async function predictImage(uri: string, signal?: AbortSignal): Promise<PredictionResponse> {
+export async function predictImage(
+  uri: string,
+  signal?: AbortSignal,
+  onFrameSize?: (frameSizeKb: number) => void,
+): Promise<PredictionResponse> {
   const apiUrl = getEngineApiUrl();
   if (!apiUrl) {
     throw new Error('API URL is not configured');
@@ -118,6 +122,7 @@ export async function predictImage(uri: string, signal?: AbortSignal): Promise<P
     }
 
     const blob = await imageResponse.blob();
+    onFrameSize?.(blob.size / 1024);
     const formData = new FormData();
     formData.append('file', blob, 'frame.jpg');
     const controller = new AbortController();
