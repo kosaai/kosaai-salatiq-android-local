@@ -501,10 +501,14 @@ export function PrayerCamera({
         </View>
       </LinearGradient>
 
-      {isActive && isCameraReady && isPrayerStarted && countdown === null && engineStatus === 'connected' && liveTimings ? (
-        <Text style={[styles.liveTimingDebug, { color: theme.muted }]}>
-          DEBUG · capture: {liveTimings.capture} ms · resize: {liveTimings.resize} ms · upload+predict: {liveTimings.uploadPredict} ms · total: {liveTimings.total} ms
-        </Text>
+      {isActive && isCameraReady && isPrayerStarted && countdown === null && engineStatus === 'connected' ? (
+        <View style={[styles.liveTimingDebug, { borderColor: theme.brassDim, backgroundColor: theme.panel }]}>
+          <Text style={[styles.liveTimingDebugLabel, { color: theme.brassSoft }]}>DEBUG ACTIVE</Text>
+          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>capture: {liveTimings?.capture ?? '—'} ms</Text>
+          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>resize: {liveTimings?.resize ?? '—'} ms</Text>
+          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>upload+predict: {liveTimings?.uploadPredict ?? '—'} ms</Text>
+          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>total: {liveTimings?.total ?? '—'} ms</Text>
+        </View>
       ) : null}
 
       {fajrEarlySittingStartedAt ? (
@@ -628,7 +632,20 @@ const styles = StyleSheet.create({
   countdownText: { color: colors.brassSoft, fontSize: 42, fontWeight: '700', fontVariant: ['tabular-nums'] },
   liveTimingDebug: {
     marginTop: 8,
-    fontSize: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  liveTimingDebugLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+    marginBottom: 3,
+  },
+  liveTimingDebugText: {
+    fontSize: 10.5,
     lineHeight: 15,
     textAlign: 'center',
     writingDirection: 'ltr',
