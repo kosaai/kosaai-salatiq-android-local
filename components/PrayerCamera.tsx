@@ -35,6 +35,13 @@ type PoseCandidate = {
   startedAt: number;
 };
 
+type LiveTimings = {
+  capture: number;
+  resize: number;
+  uploadPredict: number;
+  total: number;
+};
+
 const POSE_STABILITY_MS = 1_000;
 const LIVE_NEXT_CAPTURE_DELAY_MS = 0;
 const MAX_UPLOAD_WIDTH = 640;
@@ -107,6 +114,7 @@ export function PrayerCamera({
   const [earlySittingNow, setEarlySittingNow] = useState(0);
   const [countdownState, setCountdownState] = useState<SessionValue<number> | null>(null);
   const [prayerStartedSessionId, setPrayerStartedSessionId] = useState<number | null>(null);
+  const [liveTimings, setLiveTimings] = useState<LiveTimings | null>(null);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
@@ -204,6 +212,7 @@ export function PrayerCamera({
     setIsActive(false);
     setIsCameraReady(false);
     setCountdown(null);
+    setLiveTimings(null);
     setError(null);
     onStatusChange('OFF');
   }, [clearCountdownTimer, onStatusChange, setCountdown, stopLiveLoop]);
@@ -315,16 +324,17 @@ export function PrayerCamera({
 
       try {
         logLive('capture');
-        const cycleStartedAt = Date.now();
-        const captureStartedAt = Date.now();
+        const cycleStartedAt = performance.now();
+        const captureStartedAt = performance.now();
         const picture = await cameraRef.current.takePictureAsync({
           quality: 0.5,
           shutterSound: false,
           base64: false,
           exif: false,
         });
+        const capture = Math.round(performance.now() - captureStartedAt);
         if (__DEV__) {
-          console.log(`[LIVE] capture ms: ${Date.now() - captureStartedAt}`);
+          console.log(`[LIVE] capture ms: ${capture}`);
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
@@ -332,7 +342,9 @@ export function PrayerCamera({
         }
 
         let uploadUri = picture.uri;
+        let resize = 0;
         if (picture.width > MAX_UPLOAD_WIDTH) {
+          const resizeStartedAt = performance.now();
           const image = ImageManipulator.manipulate(picture.uri);
           image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
           const renderedImage = await image.renderAsync();
@@ -341,18 +353,24 @@ export function PrayerCamera({
             compress: 0.5,
           });
           uploadUri = resizedImage.uri;
+          resize = Math.round(performance.now() - resizeStartedAt);
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
           return;
         }
 
+        const uploadPredictStartedAt = performance.now();
         const result = await predictImage(uploadUri, requestController.signal);
+        const uploadPredict = Math.round(performance.now() - uploadPredictStartedAt);
+        const total = Math.round(performance.now() - cycleStartedAt);
         if (__DEV__) {
-          console.log(`[LIVE] total cycle ms: ${Date.now() - cycleStartedAt}`);
+          console.log(`[LIVE] total cycle ms: ${total}`);
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
+
+        setLiveTimings({ capture, resize, uploadPredict, total });
 
         if (result.status === 'ok') {
           const pose = result.person_detected ? result.pose ?? null : null;
@@ -483,6 +501,12 @@ export function PrayerCamera({
         </View>
       </LinearGradient>
 
+      {isActive && isCameraReady && isPrayerStarted && countdown === null && engineStatus === 'connected' && liveTimings ? (
+        <Text style={[styles.liveTimingDebug, { color: theme.muted }]}>
+          DEBUG · capture: {liveTimings.capture} ms · resize: {liveTimings.resize} ms · upload+predict: {liveTimings.uploadPredict} ms · total: {liveTimings.total} ms
+        </Text>
+      ) : null}
+
       {fajrEarlySittingStartedAt ? (
         <View style={[styles.earlySittingNotice, { borderColor: theme.brassDim }]}>
           <Text style={[styles.earlySittingNoticeText, { color: theme.brassSoft }]}>
@@ -602,6 +626,14 @@ const styles = StyleSheet.create({
     borderColor: colors.brass,
   },
   countdownText: { color: colors.brassSoft, fontSize: 42, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  liveTimingDebug: {
+    marginTop: 8,
+    fontSize: 10,
+    lineHeight: 15,
+    textAlign: 'center',
+    writingDirection: 'ltr',
+    fontVariant: ['tabular-nums'],
+  },
   sahwInlineAlert: {
     marginTop: 12,
     minHeight: 50,
