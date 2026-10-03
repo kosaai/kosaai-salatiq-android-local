@@ -328,7 +328,7 @@ export function PrayerCamera({
         const cycleStartedAt = performance.now();
         const captureStartedAt = performance.now();
         const picture = await cameraRef.current.takePictureAsync({
-          quality: 0.5,
+          quality: 0.3,
           shutterSound: false,
           base64: false,
           exif: false,
@@ -351,7 +351,7 @@ export function PrayerCamera({
           const renderedImage = await image.renderAsync();
           const resizedImage = await renderedImage.saveAsync({
             format: SaveFormat.JPEG,
-            compress: 0.5,
+            compress: 0.3,
           });
           uploadUri = resizedImage.uri;
           resize = Math.round(performance.now() - resizeStartedAt);
