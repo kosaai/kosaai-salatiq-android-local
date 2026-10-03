@@ -32,7 +32,7 @@
       "predictiveBackGestureEnabled": false
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/branding/salatiq-logo-dark.png"
     }
   }
 }
