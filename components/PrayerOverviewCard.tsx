@@ -1,0 +1,215 @@
+import { LinearGradient } from 'expo-linear-gradient';
+import { StyleSheet, Text, View } from 'react-native';
+import { colors, lightColors } from '../constants/theme';
+import { prayerConfig } from '../constants/prayers';
+import type { CameraStatus, PrayerState, PrayerType } from '../types/prayer';
+
+type PrayerOverviewCardProps = {
+  prayer: PrayerType;
+  state: PrayerState;
+  cameraStatus: CameraStatus;
+  isDarkMode: boolean;
+};
+
+type CameraPresentation = {
+  title: string;
+  detail: string;
+  color: string;
+};
+
+function getCameraPresentation(status: CameraStatus): CameraPresentation {
+  switch (status) {
+    case 'REQUESTING_PERMISSION':
+      return {
+        title: 'الحالة: بانتظار الإذن',
+        detail: 'جاري طلب إذن الكاميرا',
+        color: colors.brassSoft,
+      };
+    case 'STARTING':
+      return {
+        title: 'الحالة: جاري التشغيل',
+        detail: 'جاري تهيئة الكاميرا',
+        color: colors.brassSoft,
+      };
+    case 'PERMISSION_DENIED':
+      return {
+        title: 'الحالة: لا يوجد إذن للكاميرا',
+        detail: 'اسمح بالوصول من إعدادات الجهاز',
+        color: colors.danger,
+      };
+    case 'READY':
+      return {
+        title: 'الحالة: تعمل',
+        detail: 'الكاميرا تعمل',
+        color: colors.sage,
+      };
+    case 'ERROR':
+      return {
+        title: 'الحالة: تعذر التشغيل',
+        detail: 'تعذر تشغيل الكاميرا',
+        color: colors.danger,
+      };
+    case 'OFF':
+    default:
+      return {
+        title: 'الحالة: متوقفة',
+        detail: 'الكاميرا متوقفة',
+        color: colors.muted,
+      };
+  }
+}
+
+export function PrayerOverviewCard({ prayer, state, cameraStatus, isDarkMode }: PrayerOverviewCardProps) {
+  const theme = isDarkMode ? colors : lightColors;
+  const prayerName = prayerConfig[prayer].arabicName;
+  const totalRakahs = state.totalRakahs;
+  const currentRakah = Math.min(Math.max(state.currentRakah, 1), totalRakahs);
+  const camera = getCameraPresentation(cameraStatus);
+
+  return (
+    <LinearGradient
+      colors={isDarkMode ? ['#152A37', '#0D1B25'] : ['#FFFDF8', '#F4EFE4']}
+      style={[styles.card, { borderColor: theme.line }]}
+    >
+      <View style={styles.column}>
+        <Text style={[styles.label, { color: theme.muted }]}>الصلاة المختارة</Text>
+        <Text style={[styles.prayerName, { color: theme.ivory }]}>صلاة {prayerName}</Text>
+        <Text style={[styles.detail, { color: theme.brassSoft }]}>{totalRakahs} ركعات</Text>
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: theme.line }]} />
+
+      <View style={[styles.column, styles.progressColumn]}>
+        <Text style={[styles.rakahText, { color: theme.ivory }]}>
+          الركعة {currentRakah} من {totalRakahs}
+        </Text>
+        <View
+          accessibilityLabel={`التقدم: الركعة ${currentRakah} من ${totalRakahs}`}
+          style={styles.progressDots}
+        >
+          {Array.from({ length: totalRakahs }, (_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.progressDot,
+                index + 1 === currentRakah && styles.progressDotActive,
+              ]}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={[styles.divider, { backgroundColor: theme.line }]} />
+
+      <View style={[styles.column, styles.statusColumn]}>
+        <View style={styles.statusLine}>
+          <View style={[styles.statusDot, { backgroundColor: camera.color }]} />
+          <Text style={[styles.statusText, { color: theme.ivory }]}>{camera.title}</Text>
+        </View>
+        <Text style={[styles.statusDetail, { color: theme.muted }]}>{camera.detail}</Text>
+      </View>
+    </LinearGradient>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    minHeight: 88,
+    marginBottom: 22,
+    paddingVertical: 16,
+    paddingHorizontal: 13,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.line,
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+  },
+  column: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  label: {
+    color: colors.muted,
+    fontSize: 10.5,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+  },
+  prayerName: {
+    color: colors.ivory,
+    fontSize: 14,
+    fontWeight: '700',
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    marginTop: 4,
+  },
+  detail: {
+    color: colors.brassSoft,
+    fontSize: 11.5,
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    marginTop: 3,
+  },
+  divider: {
+    width: StyleSheet.hairlineWidth,
+    alignSelf: 'stretch',
+    marginHorizontal: 10,
+    backgroundColor: colors.line,
+  },
+  progressColumn: {
+    alignItems: 'center',
+  },
+  rakahText: {
+    color: colors.ivory,
+    fontSize: 12.5,
+    fontWeight: '700',
+    textAlign: 'center',
+    writingDirection: 'rtl',
+    fontVariant: ['tabular-nums'],
+  },
+  progressDots: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 11,
+  },
+  progressDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: 'rgba(124,139,148,0.58)',
+  },
+  progressDotActive: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.brass,
+  },
+  statusColumn: {
+    alignItems: 'flex-start',
+  },
+  statusLine: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    gap: 5,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  statusText: {
+    color: colors.ivory,
+    fontSize: 12,
+    fontWeight: '700',
+    textAlign: 'left',
+    writingDirection: 'rtl',
+  },
+  statusDetail: {
+    color: colors.muted,
+    fontSize: 10.5,
+    textAlign: 'left',
+    writingDirection: 'rtl',
+    marginTop: 7,
+  },
+});
