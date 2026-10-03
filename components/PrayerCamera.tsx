@@ -427,6 +427,14 @@ export function PrayerCamera({
     setCountdown(5);
   }, [canStartPrayer, setCountdown]);
 
+  const finishPrayer = useCallback(() => {
+    clearCountdownTimer();
+    stopLiveLoop();
+    setCountdown(null);
+    setPrayerStartedSessionId(null);
+    setLiveTimings(null);
+  }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
+
   return (
     <View>
       <LinearGradient
@@ -554,17 +562,18 @@ export function PrayerCamera({
         <>
           <Pressable
             accessibilityRole="button"
-            disabled={!canStartPrayer}
-            onPress={startPrayer}
+            accessibilityLabel={isPrayerStarted ? 'إتمام الصلاة' : 'بدء الصلاة'}
+            disabled={isPrayerStarted ? false : !canStartPrayer}
+            onPress={isPrayerStarted ? finishPrayer : startPrayer}
             style={({ pressed }) => [
               styles.testButton,
               { borderColor: theme.brassDim, backgroundColor: theme.panel },
-              !canStartPrayer && styles.disabled,
+              !isPrayerStarted && !canStartPrayer && styles.disabled,
               pressed && styles.pressed,
             ]}
           >
             <Text style={[styles.testButtonText, { color: theme.brassSoft }]}>
-              {countdown !== null ? `استعد: ${countdown}` : isPrayerStarted ? 'الصلاة قيد المتابعة' : 'بدء الصلاة'}
+              {countdown !== null ? `استعد: ${countdown}` : isPrayerStarted ? 'إتمام الصلاة' : 'بدء الصلاة'}
             </Text>
           </Pressable>
         </>
