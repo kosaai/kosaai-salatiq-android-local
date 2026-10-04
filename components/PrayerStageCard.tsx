@@ -232,6 +232,30 @@ export function PrayerStageCard({
           </View>
         ))}
       </View>
+      {state.sahwAlerts.length ? (
+        <View style={styles.sahwSection}>
+          <View style={[styles.sahwSeparator, { backgroundColor: theme.line }]} />
+          <Text style={[styles.sahwTitle, { color: theme.brassSoft }]}>تنبيهات السهو</Text>
+          <View style={styles.sahwList}>
+            {state.sahwAlerts.map((alert, index) => (
+              <View
+                key={`${alert.type}:${alert.rakah}:${alert.stageId ?? index}`}
+                style={[
+                  styles.sahwEntry,
+                  {
+                    borderColor: theme.brassDim,
+                    backgroundColor: isDarkMode ? 'rgba(201, 147, 46, 0.12)' : 'rgba(180, 122, 22, 0.08)',
+                  },
+                ]}
+              >
+                <Text style={[styles.sahwEntryText, { color: theme.brassSoft }]}>
+                  {`${index + 1}. ${alert.message_ar} في الركعة ${alert.rakah}`}
+                </Text>
+              </View>
+            ))}
+          </View>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -273,4 +297,10 @@ const styles = StyleSheet.create({
   rakahNumber: { color: colors.muted, fontSize: 9, marginTop: 1, fontVariant: ['tabular-nums'] },
   rakahNumberCurrent: { color: colors.brassSoft },
   rakahNumberComplete: { color: colors.brassSoft },
+  sahwSection: { marginTop: 18 },
+  sahwSeparator: { height: StyleSheet.hairlineWidth, marginBottom: 14 },
+  sahwTitle: { fontSize: 13, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl', marginBottom: 10 },
+  sahwList: { gap: 7 },
+  sahwEntry: { borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 9 },
+  sahwEntryText: { fontSize: 12.5, fontWeight: '600', lineHeight: 20, textAlign: 'right', writingDirection: 'rtl' },
 });

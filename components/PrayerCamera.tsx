@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { colors, lightColors } from '../constants/theme';
 import { predictImage, type PredictionPose } from '../services/predictionApi';
-import type { CameraStatus, EngineStatus, SahwAlert } from '../types/prayer';
+import type { CameraStatus, EngineStatus } from '../types/prayer';
 
 type PrayerCameraProps = {
   onStatusChange: (status: CameraStatus) => void;
@@ -22,7 +22,6 @@ type PrayerCameraProps = {
   onPoseDetected: (pose: PredictionPose | null) => void;
   onStartNewPrayerSession: () => void;
   sessionId: number;
-  latestSahwAlert: SahwAlert | null;
   fajrEarlySittingStartedAt: number | null;
   isDarkMode: boolean;
 };
@@ -127,7 +126,6 @@ export function PrayerCamera({
   onPoseDetected,
   onStartNewPrayerSession,
   sessionId,
-  latestSahwAlert,
   fajrEarlySittingStartedAt,
   isDarkMode,
 }: PrayerCameraProps) {
@@ -570,15 +568,6 @@ export function PrayerCamera({
         </View>
       ) : null}
 
-      {latestSahwAlert ? (
-        <View accessibilityRole="alert" style={[styles.sahwInlineAlert, { borderColor: theme.brassDim }]}>
-          <MaterialCommunityIcons name="alert-outline" size={20} color={theme.brassSoft} />
-          <Text style={[styles.sahwInlineText, { color: theme.brassSoft }]}>
-            تنبيه سهو: {latestSahwAlert.message_ar} في الركعة {latestSahwAlert.rakah}
-          </Text>
-        </View>
-      ) : null}
-
       <Pressable
         accessibilityRole="button"
         disabled={permission === null}
@@ -682,19 +671,6 @@ const styles = StyleSheet.create({
     borderColor: colors.brass,
   },
   countdownText: { color: colors.brassSoft, fontSize: 42, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  sahwInlineAlert: {
-    marginTop: 12,
-    minHeight: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    backgroundColor: 'rgba(10,20,28,0.92)',
-    flexDirection: 'row-reverse',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 9,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-  },
   earlySittingNotice: {
     marginTop: 12,
     minHeight: 46,
@@ -707,14 +683,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   earlySittingNoticeText: { fontSize: 13.5, fontWeight: '700', textAlign: 'center', writingDirection: 'rtl' },
-  sahwInlineText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    lineHeight: 22,
-    textAlign: 'right',
-    writingDirection: 'rtl',
-  },
   flipButton: {
     position: 'absolute',
     left: 14,

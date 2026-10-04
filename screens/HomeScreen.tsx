@@ -165,7 +165,6 @@ export function HomeScreen() {
             onPoseDetected={(pose) => applyEngineEvent({ state: { currentPose: pose } })}
             onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
-            latestSahwAlert={latestSahwAlert}
             fajrEarlySittingStartedAt={prayerState.fajrEarlySittingStartedAt}
             isDarkMode={isDarkMode}
           />
