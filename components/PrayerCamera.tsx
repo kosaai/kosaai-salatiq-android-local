@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -38,30 +37,12 @@ type PoseCandidate = {
   startedAt: number;
 };
 
-type LiveTimings = {
-  capture: number;
-  resizeMs: number;
-  jpegEncodeMs: number;
-  frameSizeKb: number;
-  uploadPredict: number;
-  total: number;
-};
-
-type LiveTimingLog = LiveTimings & {
-  cycle: number;
-};
-
 const POSE_STABILITY_MS = 1_000;
 const LIVE_NEXT_CAPTURE_DELAY_MS = 0;
 const MAX_UPLOAD_WIDTH = 640;
-const MAX_LIVE_TIMING_LOGS = 50;
 const WEB_FRAME_WIDTH = 384;
 const WEB_FRAME_HEIGHT = 640;
 const WEB_JPEG_QUALITY = 0.95;
-
-function formatLiveTimingLog(entry: LiveTimingLog) {
-  return `Cycle ${entry.cycle} | resize_ms: ${entry.resizeMs.toFixed(1)} | jpeg_encode_ms: ${entry.jpegEncodeMs.toFixed(1)} | frame KB: ${entry.frameSizeKb.toFixed(1)} | upload+predict: ${entry.uploadPredict.toFixed(1)} | total: ${entry.total.toFixed(1)}`;
-}
 
 function loadWebFrame(uri: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -78,7 +59,6 @@ async function prepareWebFrame(uri: string) {
     throw new Error('Captured web frame has no dimensions.');
   }
 
-  const resizeStartedAt = performance.now();
   const canvas = document.createElement('canvas');
   canvas.width = WEB_FRAME_WIDTH;
   canvas.height = WEB_FRAME_HEIGHT;
@@ -95,18 +75,14 @@ async function prepareWebFrame(uri: string) {
   context.fillStyle = '#000000';
   context.fillRect(0, 0, WEB_FRAME_WIDTH, WEB_FRAME_HEIGHT);
   context.drawImage(image, originX, originY, width, height);
-  const resizeMs = Math.round(performance.now() - resizeStartedAt);
 
-  const jpegEncodeStartedAt = performance.now();
-  const blob = await new Promise<Blob>((resolve, reject) => {
+  return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (result) => (result ? resolve(result) : reject(new Error('Unable to encode the web frame as JPEG.'))),
       'image/jpeg',
       WEB_JPEG_QUALITY,
     );
   });
-
-  return { blob, resizeMs, jpegEncodeMs: Math.round(performance.now() - jpegEncodeStartedAt) };
 }
 
 function isDetectedPrayerPose(pose: PredictionPose | null): pose is Exclude<PredictionPose, 'TRANSITION'> {
@@ -162,7 +138,6 @@ export function PrayerCamera({
   const liveRequestControllerRef = useRef<AbortController | null>(null);
   const liveLoopActiveRef = useRef(false);
   const predictionInFlightRef = useRef(false);
-  const liveTimingCycleRef = useRef(0);
   const lastLivePoseRef = useRef<PredictionPose | null>(null);
   const lastReceivedPoseRef = useRef<string | null>(null);
   const poseCandidateRef = useRef<PoseCandidate | null>(null);
@@ -181,8 +156,6 @@ export function PrayerCamera({
   const [prayerStartedSessionId, setPrayerStartedSessionId] = useState<number | null>(null);
   const [finishedPrayer, setFinishedPrayer] = useState(false);
   const [pendingNewSessionStartId, setPendingNewSessionStartId] = useState<number | null>(null);
-  const [liveTimings, setLiveTimings] = useState<LiveTimings | null>(null);
-  const [liveTimingLog, setLiveTimingLog] = useState<LiveTimingLog[]>([]);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
@@ -281,7 +254,6 @@ export function PrayerCamera({
     setIsActive(false);
     setIsCameraReady(false);
     setCountdown(null);
-    setLiveTimings(null);
     setError(null);
     onStatusChange('OFF');
   }, [clearCountdownTimer, onStatusChange, setCountdown, stopLiveLoop]);
@@ -407,40 +379,28 @@ export function PrayerCamera({
 
       try {
         logLive('capture');
-        const cycleStartedAt = performance.now();
-        const captureStartedAt = performance.now();
         const picture = await cameraRef.current.takePictureAsync({
           quality: 0.3,
           shutterSound: false,
           base64: false,
           exif: false,
         });
-        const capture = Math.round(performance.now() - captureStartedAt);
-        if (__DEV__) {
-          console.log(`[LIVE] capture ms: ${capture}`);
-        }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
           return;
         }
 
         let uploadFrame: string | Blob = picture.uri;
-        let resizeMs = 0;
-        let jpegEncodeMs = 0;
 
         if (Platform.OS === 'web') {
           try {
-            const preparedFrame = await prepareWebFrame(picture.uri);
-            uploadFrame = preparedFrame.blob;
-            resizeMs = preparedFrame.resizeMs;
-            jpegEncodeMs = preparedFrame.jpegEncodeMs;
+            uploadFrame = await prepareWebFrame(picture.uri);
           } catch {
             logLive('web frame preparation failed; using fallback');
           }
         }
 
         if (typeof uploadFrame === 'string' && picture.width > MAX_UPLOAD_WIDTH) {
-          const resizeStartedAt = performance.now();
           const image = ImageManipulator.manipulate(picture.uri);
           image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
           const renderedImage = await image.renderAsync();
@@ -449,34 +409,15 @@ export function PrayerCamera({
             compress: 0.3,
           });
           uploadFrame = resizedImage.uri;
-          resizeMs = Math.round(performance.now() - resizeStartedAt);
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
           return;
         }
 
-        let frameSizeKb = 0;
-        const uploadPredictStartedAt = performance.now();
-        const result = await predictImage(uploadFrame, requestController.signal, (size) => {
-          frameSizeKb = size;
-        });
-        const uploadPredict = Math.round(performance.now() - uploadPredictStartedAt);
-        const total = Math.round(performance.now() - cycleStartedAt);
-        if (__DEV__) {
-          console.log(`[LIVE] total cycle ms: ${total}`);
-        }
+        const result = await predictImage(uploadFrame, requestController.signal);
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
-
-        const timings = { capture, resizeMs, jpegEncodeMs, frameSizeKb, uploadPredict, total };
-        const cycle = liveTimingCycleRef.current + 1;
-        liveTimingCycleRef.current = cycle;
-        setLiveTimings(timings);
-        setLiveTimingLog((current) => [
-          ...current.slice(-(MAX_LIVE_TIMING_LOGS - 1)),
-          { cycle, ...timings },
-        ]);
 
         if (result.status === 'ok') {
           const pose = result.person_detected ? result.pose ?? null : null;
@@ -540,22 +481,8 @@ export function PrayerCamera({
     stopLiveLoop();
     setCountdown(null);
     setPrayerStartedSessionId(null);
-    setLiveTimings(null);
     setFinishedPrayer(true);
   }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
-
-  const clearLiveTimingLog = useCallback(() => {
-    liveTimingCycleRef.current = 0;
-    setLiveTimingLog([]);
-  }, []);
-
-  const copyLiveTimingLog = useCallback(() => {
-    if (Platform.OS !== 'web' || !liveTimingLog.length || !navigator.clipboard?.writeText) return;
-
-    void navigator.clipboard.writeText(liveTimingLog.map(formatLiveTimingLog).join('\n')).catch(() => {
-      // Clipboard access is optional debug functionality.
-    });
-  }, [liveTimingLog]);
 
   return (
     <View>
@@ -634,63 +561,6 @@ export function PrayerCamera({
           )}
         </View>
       </LinearGradient>
-
-      {isActive && isCameraReady && isPrayerStarted && countdown === null && engineStatus === 'connected' ? (
-        <View style={[styles.liveTimingDebug, { borderColor: theme.brassDim, backgroundColor: theme.panel }]}>
-          <Text style={[styles.liveTimingDebugLabel, { color: theme.brassSoft }]}>DEBUG ACTIVE</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>capture: {liveTimings?.capture ?? '—'} ms</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>resize_ms: {liveTimings?.resizeMs ?? '—'} ms</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>jpeg_encode_ms: {liveTimings?.jpegEncodeMs ?? '—'} ms</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>frame: {liveTimings ? liveTimings.frameSizeKb.toFixed(1) : '—'} KB</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>upload+predict: {liveTimings?.uploadPredict ?? '—'} ms</Text>
-          <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>total: {liveTimings?.total ?? '—'} ms</Text>
-          <View style={styles.liveTimingActions}>
-            {Platform.OS === 'web' ? (
-              <Pressable
-                accessibilityRole="button"
-                disabled={!liveTimingLog.length}
-                onPress={copyLiveTimingLog}
-                style={({ pressed }) => [
-                  styles.liveTimingAction,
-                  { borderColor: theme.line },
-                  !liveTimingLog.length && styles.disabled,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={[styles.liveTimingActionText, { color: theme.brassSoft }]}>نسخ السجل</Text>
-              </Pressable>
-            ) : null}
-            <Pressable
-              accessibilityRole="button"
-              disabled={!liveTimingLog.length}
-              onPress={clearLiveTimingLog}
-              style={({ pressed }) => [
-                styles.liveTimingAction,
-                { borderColor: theme.line },
-                !liveTimingLog.length && styles.disabled,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.liveTimingActionText, { color: theme.brassSoft }]}>مسح السجل</Text>
-            </Pressable>
-          </View>
-          <ScrollView
-            nestedScrollEnabled
-            style={[styles.liveTimingLog, { borderColor: theme.line }]}
-            contentContainerStyle={styles.liveTimingLogContent}
-          >
-            {liveTimingLog.length ? (
-              liveTimingLog.map((entry) => (
-                <Text key={entry.cycle} style={[styles.liveTimingLogText, { color: theme.muted }]}>
-                  {formatLiveTimingLog(entry)}
-                </Text>
-              ))
-            ) : (
-              <Text style={[styles.liveTimingLogEmpty, { color: theme.muted }]}>لا توجد دورات مكتملة بعد</Text>
-            )}
-          </ScrollView>
-        </View>
-      ) : null}
 
       {fajrEarlySittingStartedAt ? (
         <View style={[styles.earlySittingNotice, { borderColor: theme.brassDim }]}>
@@ -812,50 +682,6 @@ const styles = StyleSheet.create({
     borderColor: colors.brass,
   },
   countdownText: { color: colors.brassSoft, fontSize: 42, fontWeight: '700', fontVariant: ['tabular-nums'] },
-  liveTimingDebug: {
-    marginTop: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  liveTimingDebugLabel: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    marginBottom: 3,
-  },
-  liveTimingDebugText: {
-    fontSize: 10.5,
-    lineHeight: 15,
-    textAlign: 'center',
-    writingDirection: 'ltr',
-    fontVariant: ['tabular-nums'],
-  },
-  liveTimingActions: {
-    alignSelf: 'stretch',
-    flexDirection: 'row-reverse',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-  },
-  liveTimingAction: {
-    borderRadius: 6,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-  },
-  liveTimingActionText: { fontSize: 10.5, fontWeight: '700', writingDirection: 'rtl' },
-  liveTimingLog: {
-    alignSelf: 'stretch',
-    borderTopWidth: 1,
-    marginTop: 8,
-    maxHeight: 150,
-  },
-  liveTimingLogContent: { gap: 4, paddingTop: 8 },
-  liveTimingLogText: { fontSize: 9.5, lineHeight: 14, textAlign: 'left', writingDirection: 'ltr', fontVariant: ['tabular-nums'] },
-  liveTimingLogEmpty: { fontSize: 10, paddingVertical: 4, textAlign: 'center', writingDirection: 'rtl' },
   sahwInlineAlert: {
     marginTop: 12,
     minHeight: 50,

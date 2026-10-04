@@ -93,7 +93,6 @@ function parsePredictionResponse(value: unknown): PredictionResponse {
 export async function predictImage(
   image: string | Blob,
   signal?: AbortSignal,
-  onFrameSize?: (frameSizeKb: number) => void,
 ): Promise<PredictionResponse> {
   const apiUrl = getEngineApiUrl();
   if (!apiUrl) {
@@ -128,7 +127,6 @@ export async function predictImage(
       blob = image;
     }
 
-    onFrameSize?.(blob.size / 1024);
     const formData = new FormData();
     formData.append('file', blob, 'frame.jpg');
     const controller = new AbortController();
@@ -145,7 +143,6 @@ export async function predictImage(
 
     try {
       logYolo('sending request...');
-      const predictionStartedAt = Date.now();
       const response = await fetch(`${apiUrl}/predict`, {
         method: 'POST',
         headers: { Accept: 'application/json' },
@@ -153,9 +150,6 @@ export async function predictImage(
         signal: controller.signal,
       });
       const responseBody = await response.text();
-      if (__DEV__) {
-        console.log(`[LIVE] upload+predict ms: ${Date.now() - predictionStartedAt}`);
-      }
       logYolo('response status:', response.status);
       logYolo('response body:', responseBody);
 
