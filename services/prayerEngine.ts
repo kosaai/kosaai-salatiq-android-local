@@ -37,6 +37,7 @@ export function createInitialPrayerState(prayer: PrayerType = 'FAJR'): PrayerSta
     prayerCompleted: false,
     firstTashahhudStartedAt: null,
     fajrEarlySittingStartedAt: null,
+    maghribEarlySittingStartedAt: null,
     prayerStarted: false,
   };
 }
@@ -426,6 +427,36 @@ export function confirmFajrEarlySittingTimeout(state: PrayerState): PrayerState 
   };
 }
 
+export function confirmMaghribEarlySittingTimeout(state: PrayerState): PrayerState {
+  if (
+    state.prayerType !== 'MAGHRIB' ||
+    !state.maghribEarlySittingStartedAt ||
+    maghribSequence[state.expectedIndex]?.id !== 'R2_STANDING'
+  ) {
+    return state;
+  }
+
+  if (state.sahwAlerts.some((alert) => alert.type === 'EARLY_TASHAHHUD')) {
+    return { ...state, maghribEarlySittingStartedAt: null };
+  }
+
+  const alert: SahwAlert = {
+    type: 'EARLY_TASHAHHUD',
+    kind: 'MISSING',
+    rakah: 2,
+    message_ar: sahwMessages.EARLY_TASHAHHUD,
+    skippedStages: [],
+    stageId: 'R2_EARLY_TASHAHHUD',
+  };
+
+  return {
+    ...state,
+    sahwWarning: alert.message_ar,
+    sahwAlerts: [...state.sahwAlerts, alert],
+    maghribEarlySittingStartedAt: null,
+  };
+}
+
 function clearFajrEarlySittingAlert(state: PrayerState): PrayerState {
   const sahwAlerts = state.sahwAlerts.filter((alert) => alert.stageId !== 'R2_EARLY_TASHAHHUD');
 
@@ -454,14 +485,23 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
 
   const expected = validatorSequence[state.expectedIndex];
   if (
-    state.prayerType === 'FAJR' &&
+    (state.prayerType === 'FAJR' || state.prayerType === 'MAGHRIB') &&
     pose === 'SITTING' &&
     state.prayerStage === 'SUJUD_2' &&
     expected?.id === 'R2_STANDING'
   ) {
+    if (
+      state.prayerType === 'MAGHRIB' &&
+      state.sahwAlerts.some((alert) => alert.type === 'EARLY_TASHAHHUD')
+    ) {
+      return state;
+    }
+
     return {
       ...state,
-      fajrEarlySittingStartedAt: state.fajrEarlySittingStartedAt ?? Date.now(),
+      ...(state.prayerType === 'FAJR'
+        ? { fajrEarlySittingStartedAt: state.fajrEarlySittingStartedAt ?? Date.now() }
+        : { maghribEarlySittingStartedAt: state.maghribEarlySittingStartedAt ?? Date.now() }),
     };
   }
 
@@ -480,31 +520,37 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
     state.prayerType === 'FAJR' && pose === 'STANDING'
       ? clearFajrEarlySittingAlert(stateAfterFajrWait)
       : stateAfterFajrWait;
+  const stateAfterMaghribWait =
+    state.prayerType === 'MAGHRIB' &&
+    pose === 'STANDING' &&
+    state.maghribEarlySittingStartedAt
+      ? { ...stateAfterFajrEarlyAlert, maghribEarlySittingStartedAt: null }
+      : stateAfterFajrEarlyAlert;
 
   if (state.prayerCompleted && pose === 'STANDING') {
-    return validateSequenceStage(stateAfterFajrEarlyAlert, validatorSequence, 'STANDING');
+    return validateSequenceStage(stateAfterMaghribWait, validatorSequence, 'STANDING');
   }
 
   if (pose === 'STANDING' && state.sequence.pendingBowing) {
     return validateSequenceStage(
-      validateSequenceStage(stateAfterFajrEarlyAlert, validatorSequence, 'BOWING'),
+      validateSequenceStage(stateAfterMaghribWait, validatorSequence, 'BOWING'),
       validatorSequence,
       'ITIDAL',
     );
   }
 
   if (pose === 'BOWING' && state.sequence.rukuDone) {
-    return addSahwAlert(stateAfterFajrEarlyAlert, 'EXTRA_BOWING');
+    return addSahwAlert(stateAfterMaghribWait, 'EXTRA_BOWING');
   }
 
   if (pose === 'BOWING' || (pose === 'STANDING' && state.prayerStage === 'STANDING')) {
-    return stateAfterFajrEarlyAlert;
+    return stateAfterMaghribWait;
   }
 
-  const stage = stateAfterFajrEarlyAlert.prayerStage;
+  const stage = stateAfterMaghribWait.prayerStage;
   return stage
-    ? validateSequenceStage(stateAfterFajrEarlyAlert, validatorSequence, stage)
-    : stateAfterFajrEarlyAlert;
+    ? validateSequenceStage(stateAfterMaghribWait, validatorSequence, stage)
+    : stateAfterMaghribWait;
 }
 
 /**

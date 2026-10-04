@@ -65,13 +65,6 @@ export function PrayerStageCard({
   const timelineNodes = timelineRows.flatMap((row) => row.nodes);
   const activeNodeId = getActivePrayerTimelineNodeId(state);
   const activeIndex = activeNodeId ? timelineNodes.findIndex((node) => node.id === activeNodeId) : -1;
-  const skippedNodeIds = new Set(
-    state.sahwAlerts.flatMap((alert) =>
-      alert.skippedStages.map(
-        (skipped) => `${alert.rakah}-${skipped.stage}-${skipped.tashahhud ?? 'none'}`,
-      ),
-    ),
-  );
   const validatorSequence = state.prayerType === 'FAJR'
     ? fajrSequence
     : state.prayerType === 'MAGHRIB'
@@ -90,27 +83,25 @@ export function PrayerStageCard({
       .map((stageId) => validatorNodeIdByStageId.get(stageId))
       .filter((nodeId): nodeId is string => Boolean(nodeId)),
   );
-  for (const stageId of state.skippedStageIds) {
-    const nodeId = validatorNodeIdByStageId.get(stageId);
-    if (nodeId) skippedNodeIds.add(nodeId);
-  }
   const prayerStage = state.prayerStage;
   const latestSahwAlert = state.sahwAlerts[state.sahwAlerts.length - 1];
-  const isFajrPostSujudSittingGrace =
-    state.prayerType === 'FAJR' &&
-    state.fajrEarlySittingStartedAt !== null &&
+  const isPostSujudSittingGrace =
+    (
+      (state.prayerType === 'FAJR' && state.fajrEarlySittingStartedAt !== null) ||
+      (state.prayerType === 'MAGHRIB' && state.maghribEarlySittingStartedAt !== null)
+    ) &&
     prayerStage === 'SUJUD_2';
-  const isFajrEarlySittingAlert =
-    state.prayerType === 'FAJR' &&
+  const isPostSujudEarlySittingAlert =
+    (state.prayerType === 'FAJR' || state.prayerType === 'MAGHRIB') &&
     prayerStage === 'SUJUD_2' &&
     currentPose === 'SITTING' &&
     state.sahwAlerts.some((alert) => alert.stageId === 'R2_EARLY_TASHAHHUD');
-  const displayedPrayerStage = isFajrPostSujudSittingGrace
+  const displayedPrayerStage = isPostSujudSittingGrace
     ? 'SUJUD_2'
-    : isFajrEarlySittingAlert
+    : isPostSujudEarlySittingAlert
       ? 'TASHAHHUD'
       : prayerStage;
-  const displayedPose = isFajrPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
+  const displayedPose = isPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
   const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
 
@@ -179,11 +170,10 @@ export function PrayerStageCard({
             {row.nodes.map((node) => {
               const nodeIndex = timelineNodes.findIndex((item) => item.id === node.id);
               const isCurrent = nodeIndex === activeIndex;
-              const isSkipped = skippedNodeIds.has(node.id);
               const isComplete = validatorSequence
                 ? completedNodeIds.has(node.id)
                 : activeIndex >= 0 && nodeIndex < activeIndex;
-              const isGold = isCurrent || isComplete || isSkipped;
+              const isGold = isCurrent || isComplete;
 
               return (
                 <View key={node.id} style={styles.timelineItem}>

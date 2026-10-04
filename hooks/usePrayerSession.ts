@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   advancePrayerSequence,
   confirmFajrEarlySittingTimeout,
+  confirmMaghribEarlySittingTimeout,
   createInitialPrayerState,
   normalizePrayerEngineState,
 } from '../services/prayerEngine';
@@ -29,6 +30,21 @@ export function usePrayerSession() {
 
     return () => clearTimeout(timeout);
   }, [prayerState.fajrEarlySittingStartedAt]);
+
+  useEffect(() => {
+    const startedAt = prayerState.maghribEarlySittingStartedAt;
+    if (!startedAt) return;
+
+    const timeout = setTimeout(() => {
+      setPrayerState((current) =>
+        current.maghribEarlySittingStartedAt === startedAt
+          ? confirmMaghribEarlySittingTimeout(current)
+          : current,
+      );
+    }, Math.max(0, startedAt + 10_000 - Date.now()));
+
+    return () => clearTimeout(timeout);
+  }, [prayerState.maghribEarlySittingStartedAt]);
 
   const selectPrayer = useCallback((prayer: PrayerType) => {
     if (prayer === selectedPrayer) return;

@@ -76,6 +76,7 @@ export interface PrayerState {
   prayerCompleted: boolean;
   firstTashahhudStartedAt: number | null;
   fajrEarlySittingStartedAt: number | null;
+  maghribEarlySittingStartedAt: number | null;
   prayerStarted: boolean;
 }
 

@@ -136,6 +136,7 @@ export function HomeScreen() {
             onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
             fajrEarlySittingStartedAt={prayerState.fajrEarlySittingStartedAt}
+            maghribEarlySittingStartedAt={prayerState.maghribEarlySittingStartedAt}
             firstTashahhudStartedAt={prayerState.firstTashahhudStartedAt}
             isDarkMode={isDarkMode}
           />
