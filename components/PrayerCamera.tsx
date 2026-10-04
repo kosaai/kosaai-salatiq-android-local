@@ -21,6 +21,7 @@ type PrayerCameraProps = {
   engineStatus: EngineStatus;
   onCheckEngine: () => Promise<EngineStatus>;
   onPoseDetected: (pose: PredictionPose | null) => void;
+  onStartNewPrayerSession: () => void;
   sessionId: number;
   latestSahwAlert: SahwAlert | null;
   fajrEarlySittingStartedAt: number | null;
@@ -148,6 +149,7 @@ export function PrayerCamera({
   engineStatus,
   onCheckEngine,
   onPoseDetected,
+  onStartNewPrayerSession,
   sessionId,
   latestSahwAlert,
   fajrEarlySittingStartedAt,
@@ -177,6 +179,8 @@ export function PrayerCamera({
   const [earlySittingNow, setEarlySittingNow] = useState(0);
   const [countdownState, setCountdownState] = useState<SessionValue<number> | null>(null);
   const [prayerStartedSessionId, setPrayerStartedSessionId] = useState<number | null>(null);
+  const [finishedPrayer, setFinishedPrayer] = useState(false);
+  const [pendingNewSessionStartId, setPendingNewSessionStartId] = useState<number | null>(null);
   const [liveTimings, setLiveTimings] = useState<LiveTimings | null>(null);
   const [liveTimingLog, setLiveTimingLog] = useState<LiveTimingLog[]>([]);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
@@ -185,7 +189,8 @@ export function PrayerCamera({
     engineStatus === 'connected' &&
     isCameraReady &&
     !isPrayerStarted &&
-    countdown === null;
+    countdown === null &&
+    pendingNewSessionStartId === null;
   const engine = getEnginePresentation(engineStatus, isActive);
 
   useEffect(() => {
@@ -322,6 +327,20 @@ export function PrayerCamera({
     clearCountdownTimer();
     stopLiveLoop();
   }, [clearCountdownTimer, sessionId, stopLiveLoop]);
+
+  useEffect(() => {
+    if (pendingNewSessionStartId === null || pendingNewSessionStartId !== sessionId) return;
+
+    const startTimer = setTimeout(() => {
+      setPendingNewSessionStartId(null);
+      if (engineStatus !== 'connected') return;
+
+      setFinishedPrayer(false);
+      setCountdown(5);
+    }, 0);
+
+    return () => clearTimeout(startTimer);
+  }, [engineStatus, pendingNewSessionStartId, sessionId, setCountdown]);
 
   useEffect(() => {
     if (engineStatus === 'connected') return;
@@ -507,8 +526,14 @@ export function PrayerCamera({
   const startPrayer = useCallback(() => {
     if (!canStartPrayer) return;
 
+    if (finishedPrayer) {
+      setPendingNewSessionStartId(sessionId + 1);
+      onStartNewPrayerSession();
+      return;
+    }
+
     setCountdown(5);
-  }, [canStartPrayer, setCountdown]);
+  }, [canStartPrayer, finishedPrayer, onStartNewPrayerSession, sessionId, setCountdown]);
 
   const finishPrayer = useCallback(() => {
     clearCountdownTimer();
@@ -516,6 +541,7 @@ export function PrayerCamera({
     setCountdown(null);
     setPrayerStartedSessionId(null);
     setLiveTimings(null);
+    setFinishedPrayer(true);
   }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
 
   const clearLiveTimingLog = useCallback(() => {

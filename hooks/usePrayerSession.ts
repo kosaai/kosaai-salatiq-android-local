@@ -38,6 +38,11 @@ export function usePrayerSession() {
     setSessionId((current) => current + 1);
   }, [selectedPrayer]);
 
+  const startNewPrayerSession = useCallback(() => {
+    setPrayerState(createInitialPrayerState(selectedPrayer));
+    setSessionId((current) => current + 1);
+  }, [selectedPrayer]);
+
   const applyEngineEvent = useCallback((event: PrayerEngineEvent) => {
     setPrayerState((current) => {
       const normalized = normalizePrayerEngineState(event.state);
@@ -53,6 +58,7 @@ export function usePrayerSession() {
     cameraStatus,
     sessionId,
     selectPrayer,
+    startNewPrayerSession,
     setCameraStatus,
     applyEngineEvent,
   };

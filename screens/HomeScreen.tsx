@@ -22,7 +22,16 @@ import { usePrayerSession } from '../hooks/usePrayerSession';
 
 export function HomeScreen() {
   const { width } = useWindowDimensions();
-  const { selectedPrayer, prayerState, cameraStatus, sessionId, selectPrayer, setCameraStatus, applyEngineEvent } = usePrayerSession();
+  const {
+    selectedPrayer,
+    prayerState,
+    cameraStatus,
+    sessionId,
+    selectPrayer,
+    startNewPrayerSession,
+    setCameraStatus,
+    applyEngineEvent,
+  } = usePrayerSession();
   const { engineStatus, checkConnection } = useEngineConnection();
   const [isDarkMode, setIsDarkMode] = useState(false);
   const theme = isDarkMode ? colors : lightColors;
@@ -154,6 +163,7 @@ export function HomeScreen() {
             engineStatus={engineStatus}
             onCheckEngine={checkConnection}
             onPoseDetected={(pose) => applyEngineEvent({ state: { currentPose: pose } })}
+            onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
             latestSahwAlert={latestSahwAlert}
             fajrEarlySittingStartedAt={prayerState.fajrEarlySittingStartedAt}
