@@ -248,7 +248,9 @@ function advanceBasePrayerSequence(state: PrayerState, pose: PrayerPose): Prayer
       if (sequence.pendingBowing) {
         sequence.pendingBowing = false;
         return {
-          ...addSahwAlert(nextState, 'MISSING_BOWING'),
+          ...(usesSingleSahwAlert(state.prayerType)
+            ? nextState
+            : addSahwAlert(nextState, 'MISSING_BOWING')),
           prayerStage: 'SUJUD_1',
           currentSujud: 1,
           sequence,
@@ -358,6 +360,10 @@ function isFourRakahPrayer(prayer: PrayerType) {
   return prayer === 'DHUHR' || prayer === 'ASR' || prayer === 'ISHA';
 }
 
+function usesSingleSahwAlert(prayer: PrayerType) {
+  return prayer === 'MAGHRIB' || isFourRakahPrayer(prayer);
+}
+
 function isFourRakahNextStanding(stage: PrayerSequenceStage | undefined) {
   return stage?.id === 'R2_STANDING' || stage?.id === 'R4_STANDING';
 }
@@ -380,17 +386,32 @@ function validateSequenceStage(
     return repeated ? addFajrAlert(state, 'EXTRA_STAGE', repeated) : state;
   }
 
+  const missingStages = sequence.slice(state.expectedIndex, nextIndex);
   let nextState = state;
-  for (const missing of sequence.slice(state.expectedIndex, nextIndex)) {
-    nextState = addFajrAlert(nextState, 'MISSING_STAGE', missing);
+  if (usesSingleSahwAlert(state.prayerType)) {
+    const missing = missingStages[0];
+    if (missing) {
+      nextState = addFajrAlert(nextState, 'MISSING_STAGE', missing);
+    }
+  } else {
+    for (const missing of missingStages) {
+      nextState = addFajrAlert(nextState, 'MISSING_STAGE', missing);
+    }
   }
 
   const completed = sequence[nextIndex];
   const completedStageIds = [...nextState.completedStageIds, completed.id];
-  const skippedStageIds = [
-    ...nextState.skippedStageIds,
-    ...sequence.slice(state.expectedIndex, nextIndex).map((item) => item.id),
-  ];
+  const confirmedMissingStages = usesSingleSahwAlert(state.prayerType)
+    ? missingStages.slice(0, 1)
+    : missingStages;
+  const skippedStageIds = usesSingleSahwAlert(state.prayerType)
+    ? [
+        ...nextState.skippedStageIds,
+        ...confirmedMissingStages
+          .map((item) => item.id)
+          .filter((stageId) => !nextState.skippedStageIds.includes(stageId)),
+      ]
+    : [...nextState.skippedStageIds, ...confirmedMissingStages.map((item) => item.id)];
   const expectedIndex = nextIndex + 1;
 
   return {
@@ -577,6 +598,10 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
   }
 
   if (pose === 'STANDING' && state.sequence.pendingBowing) {
+    if (usesSingleSahwAlert(state.prayerType)) {
+      return validateSequenceStage(stateAfterFourRakahWait, validatorSequence, 'ITIDAL');
+    }
+
     return validateSequenceStage(
       validateSequenceStage(stateAfterFourRakahWait, validatorSequence, 'BOWING'),
       validatorSequence,
@@ -588,7 +613,13 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
     return addSahwAlert(stateAfterFourRakahWait, 'EXTRA_BOWING');
   }
 
-  if (pose === 'BOWING' || (pose === 'STANDING' && state.prayerStage === 'STANDING')) {
+  if (pose === 'BOWING') {
+    return usesSingleSahwAlert(state.prayerType)
+      ? validateSequenceStage(stateAfterFourRakahWait, validatorSequence, 'BOWING')
+      : stateAfterFourRakahWait;
+  }
+
+  if (pose === 'STANDING' && state.prayerStage === 'STANDING') {
     return stateAfterFourRakahWait;
   }
 
