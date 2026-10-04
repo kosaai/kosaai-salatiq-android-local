@@ -96,8 +96,23 @@ export function PrayerStageCard({
     if (nodeId) skippedNodeIds.add(nodeId);
   }
   const prayerStage = state.prayerStage;
-  const confidence = state.confidence;
   const latestSahwAlert = state.sahwAlerts[state.sahwAlerts.length - 1];
+  const isFajrPostSujudSittingGrace =
+    state.prayerType === 'FAJR' &&
+    state.fajrEarlySittingStartedAt !== null &&
+    prayerStage === 'SUJUD_2';
+  const isFajrEarlySittingAlert =
+    state.prayerType === 'FAJR' &&
+    prayerStage === 'SUJUD_2' &&
+    currentPose === 'SITTING' &&
+    state.sahwAlerts.some((alert) => alert.stageId === 'R2_EARLY_TASHAHHUD');
+  const displayedPrayerStage = isFajrPostSujudSittingGrace
+    ? 'SUJUD_2'
+    : isFajrEarlySittingAlert
+      ? 'TASHAHHUD'
+      : prayerStage;
+  const displayedPose = isFajrPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
+  const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
   const firstTashahhudElapsedSeconds = state.firstTashahhudStartedAt
     ? Math.max(0, Math.floor((now - state.firstTashahhudStartedAt) / 1_000))
@@ -133,10 +148,10 @@ export function PrayerStageCard({
   }, [engineStatus]);
   const showPoseIcon =
     engineStatus === 'connected' &&
-    (currentPose === 'STANDING' ||
-      currentPose === 'BOWING' ||
-      currentPose === 'PROSTRATING' ||
-      currentPose === 'SITTING');
+    (displayedPose === 'STANDING' ||
+      displayedPose === 'BOWING' ||
+      displayedPose === 'PROSTRATING' ||
+      displayedPose === 'SITTING');
   const showConfidence = engineStatus === 'connected' && typeof confidence === 'number';
 
   return (
@@ -145,7 +160,7 @@ export function PrayerStageCard({
           <View style={styles.currentStage}>
             {engineStatus !== 'error' ? (
               <View style={styles.iconSlot}>
-                {showPoseIcon ? <PrayerPoseIcon pose={currentPose} stage={prayerStage} size={56} /> : <View style={styles.iconPlaceholder} />}
+                {showPoseIcon ? <PrayerPoseIcon pose={displayedPose} stage={displayedPrayerStage} size={56} /> : <View style={styles.iconPlaceholder} />}
               </View>
             ) : null}
             <View style={[styles.stageCopy, engineStatus === 'error' && styles.connectionErrorCopy]}>
@@ -156,7 +171,7 @@ export function PrayerStageCard({
                 engineStatus === 'error' && styles.connectionErrorText,
               ]}
             >
-              {getStageMessage(engineStatus, currentPose, prayerStage, isExtraBowing, connectingDots)}
+              {getStageMessage(engineStatus, displayedPose, displayedPrayerStage, isExtraBowing, connectingDots)}
             </Text>
             {firstTashahhudElapsedSeconds !== null ? (
               <Text style={[firstTashahhudElapsedSeconds >= 20 ? styles.tashahhudWarning : styles.tashahhudTimer, { color: theme.brassSoft }]}>
