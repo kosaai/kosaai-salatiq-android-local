@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -45,12 +46,21 @@ type LiveTimings = {
   total: number;
 };
 
+type LiveTimingLog = LiveTimings & {
+  cycle: number;
+};
+
 const POSE_STABILITY_MS = 1_000;
 const LIVE_NEXT_CAPTURE_DELAY_MS = 0;
 const MAX_UPLOAD_WIDTH = 640;
+const MAX_LIVE_TIMING_LOGS = 50;
 const WEB_FRAME_WIDTH = 384;
 const WEB_FRAME_HEIGHT = 640;
 const WEB_JPEG_QUALITY = 0.95;
+
+function formatLiveTimingLog(entry: LiveTimingLog) {
+  return `Cycle ${entry.cycle} | resize_ms: ${entry.resizeMs.toFixed(1)} | jpeg_encode_ms: ${entry.jpegEncodeMs.toFixed(1)} | frame KB: ${entry.frameSizeKb.toFixed(1)} | upload+predict: ${entry.uploadPredict.toFixed(1)} | total: ${entry.total.toFixed(1)}`;
+}
 
 function loadWebFrame(uri: string) {
   return new Promise<HTMLImageElement>((resolve, reject) => {
@@ -150,6 +160,7 @@ export function PrayerCamera({
   const liveRequestControllerRef = useRef<AbortController | null>(null);
   const liveLoopActiveRef = useRef(false);
   const predictionInFlightRef = useRef(false);
+  const liveTimingCycleRef = useRef(0);
   const lastLivePoseRef = useRef<PredictionPose | null>(null);
   const lastReceivedPoseRef = useRef<string | null>(null);
   const poseCandidateRef = useRef<PoseCandidate | null>(null);
@@ -167,6 +178,7 @@ export function PrayerCamera({
   const [countdownState, setCountdownState] = useState<SessionValue<number> | null>(null);
   const [prayerStartedSessionId, setPrayerStartedSessionId] = useState<number | null>(null);
   const [liveTimings, setLiveTimings] = useState<LiveTimings | null>(null);
+  const [liveTimingLog, setLiveTimingLog] = useState<LiveTimingLog[]>([]);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
@@ -438,7 +450,14 @@ export function PrayerCamera({
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
 
-        setLiveTimings({ capture, resizeMs, jpegEncodeMs, frameSizeKb, uploadPredict, total });
+        const timings = { capture, resizeMs, jpegEncodeMs, frameSizeKb, uploadPredict, total };
+        const cycle = liveTimingCycleRef.current + 1;
+        liveTimingCycleRef.current = cycle;
+        setLiveTimings(timings);
+        setLiveTimingLog((current) => [
+          ...current.slice(-(MAX_LIVE_TIMING_LOGS - 1)),
+          { cycle, ...timings },
+        ]);
 
         if (result.status === 'ok') {
           const pose = result.person_detected ? result.pose ?? null : null;
@@ -498,6 +517,19 @@ export function PrayerCamera({
     setPrayerStartedSessionId(null);
     setLiveTimings(null);
   }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
+
+  const clearLiveTimingLog = useCallback(() => {
+    liveTimingCycleRef.current = 0;
+    setLiveTimingLog([]);
+  }, []);
+
+  const copyLiveTimingLog = useCallback(() => {
+    if (Platform.OS !== 'web' || !liveTimingLog.length || !navigator.clipboard?.writeText) return;
+
+    void navigator.clipboard.writeText(liveTimingLog.map(formatLiveTimingLog).join('\n')).catch(() => {
+      // Clipboard access is optional debug functionality.
+    });
+  }, [liveTimingLog]);
 
   return (
     <View>
@@ -586,6 +618,51 @@ export function PrayerCamera({
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>frame: {liveTimings ? liveTimings.frameSizeKb.toFixed(1) : '—'} KB</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>upload+predict: {liveTimings?.uploadPredict ?? '—'} ms</Text>
           <Text style={[styles.liveTimingDebugText, { color: theme.muted }]}>total: {liveTimings?.total ?? '—'} ms</Text>
+          <View style={styles.liveTimingActions}>
+            {Platform.OS === 'web' ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={!liveTimingLog.length}
+                onPress={copyLiveTimingLog}
+                style={({ pressed }) => [
+                  styles.liveTimingAction,
+                  { borderColor: theme.line },
+                  !liveTimingLog.length && styles.disabled,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.liveTimingActionText, { color: theme.brassSoft }]}>نسخ السجل</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              accessibilityRole="button"
+              disabled={!liveTimingLog.length}
+              onPress={clearLiveTimingLog}
+              style={({ pressed }) => [
+                styles.liveTimingAction,
+                { borderColor: theme.line },
+                !liveTimingLog.length && styles.disabled,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.liveTimingActionText, { color: theme.brassSoft }]}>مسح السجل</Text>
+            </Pressable>
+          </View>
+          <ScrollView
+            nestedScrollEnabled
+            style={[styles.liveTimingLog, { borderColor: theme.line }]}
+            contentContainerStyle={styles.liveTimingLogContent}
+          >
+            {liveTimingLog.length ? (
+              liveTimingLog.map((entry) => (
+                <Text key={entry.cycle} style={[styles.liveTimingLogText, { color: theme.muted }]}>
+                  {formatLiveTimingLog(entry)}
+                </Text>
+              ))
+            ) : (
+              <Text style={[styles.liveTimingLogEmpty, { color: theme.muted }]}>لا توجد دورات مكتملة بعد</Text>
+            )}
+          </ScrollView>
         </View>
       ) : null}
 
@@ -730,6 +807,29 @@ const styles = StyleSheet.create({
     writingDirection: 'ltr',
     fontVariant: ['tabular-nums'],
   },
+  liveTimingActions: {
+    alignSelf: 'stretch',
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+  },
+  liveTimingAction: {
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+  },
+  liveTimingActionText: { fontSize: 10.5, fontWeight: '700', writingDirection: 'rtl' },
+  liveTimingLog: {
+    alignSelf: 'stretch',
+    borderTopWidth: 1,
+    marginTop: 8,
+    maxHeight: 150,
+  },
+  liveTimingLogContent: { gap: 4, paddingTop: 8 },
+  liveTimingLogText: { fontSize: 9.5, lineHeight: 14, textAlign: 'left', writingDirection: 'ltr', fontVariant: ['tabular-nums'] },
+  liveTimingLogEmpty: { fontSize: 10, paddingVertical: 4, textAlign: 'center', writingDirection: 'rtl' },
   sahwInlineAlert: {
     marginTop: 12,
     minHeight: 50,
