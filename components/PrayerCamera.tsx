@@ -24,6 +24,7 @@ type PrayerCameraProps = {
   sessionId: number;
   fajrEarlySittingStartedAt: number | null;
   maghribEarlySittingStartedAt: number | null;
+  fourRakahEarlySittingStartedAt: number | null;
   firstTashahhudStartedAt: number | null;
   isDarkMode: boolean;
 };
@@ -130,6 +131,7 @@ export function PrayerCamera({
   sessionId,
   fajrEarlySittingStartedAt,
   maghribEarlySittingStartedAt,
+  fourRakahEarlySittingStartedAt,
   firstTashahhudStartedAt,
   isDarkMode,
 }: PrayerCameraProps) {
@@ -161,7 +163,8 @@ export function PrayerCamera({
   const [firstTashahhudReminderSessionId, setFirstTashahhudReminderSessionId] = useState<number | null>(null);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
   const showFirstTashahhudReminder = firstTashahhudReminderSessionId === sessionId;
-  const postSujudSittingStartedAt = fajrEarlySittingStartedAt ?? maghribEarlySittingStartedAt;
+  const postSujudSittingStartedAt =
+    fajrEarlySittingStartedAt ?? maghribEarlySittingStartedAt ?? fourRakahEarlySittingStartedAt;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
     engineStatus === 'connected' &&

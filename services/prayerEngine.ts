@@ -38,6 +38,7 @@ export function createInitialPrayerState(prayer: PrayerType = 'FAJR'): PrayerSta
     firstTashahhudStartedAt: null,
     fajrEarlySittingStartedAt: null,
     maghribEarlySittingStartedAt: null,
+    fourRakahEarlySittingStartedAt: null,
     prayerStarted: false,
   };
 }
@@ -353,6 +354,14 @@ function addFajrAlert(
   };
 }
 
+function isFourRakahPrayer(prayer: PrayerType) {
+  return prayer === 'DHUHR' || prayer === 'ASR' || prayer === 'ISHA';
+}
+
+function isFourRakahNextStanding(stage: PrayerSequenceStage | undefined) {
+  return stage?.id === 'R2_STANDING' || stage?.id === 'R4_STANDING';
+}
+
 function validateSequenceStage(
   state: PrayerState,
   sequence: readonly PrayerSequenceStage[],
@@ -457,6 +466,22 @@ export function confirmMaghribEarlySittingTimeout(state: PrayerState): PrayerSta
   };
 }
 
+export function confirmFourRakahEarlySittingTimeout(state: PrayerState): PrayerState {
+  const expected = fourRakahSequence[state.expectedIndex];
+  if (
+    !isFourRakahPrayer(state.prayerType) ||
+    !state.fourRakahEarlySittingStartedAt ||
+    !isFourRakahNextStanding(expected)
+  ) {
+    return state;
+  }
+
+  return {
+    ...addFajrAlert(state, 'MISSING_STAGE', expected),
+    fourRakahEarlySittingStartedAt: null,
+  };
+}
+
 function clearFajrEarlySittingAlert(state: PrayerState): PrayerState {
   const sahwAlerts = state.sahwAlerts.filter((alert) => alert.stageId !== 'R2_EARLY_TASHAHHUD');
 
@@ -477,22 +502,34 @@ function getValidatorSequence(prayer: PrayerType) {
   return null;
 }
 
-/** Applies an explicit validator for FAJR and MAGHRIB while preserving the existing flow elsewhere. */
+/** Applies an explicit validator for all supported prayer sequences. */
 export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): PrayerState {
   const validatorSequence = getValidatorSequence(state.prayerType);
   if (!validatorSequence) return advanceBasePrayerSequence(state, pose);
   if (pose === 'TRANSITION' || pose === 'UNKNOWN') return advanceBasePrayerSequence(state, pose);
 
   const expected = validatorSequence[state.expectedIndex];
-  if (
-    (state.prayerType === 'FAJR' || state.prayerType === 'MAGHRIB') &&
+  const shouldWaitForPostSujudStanding =
     pose === 'SITTING' &&
     state.prayerStage === 'SUJUD_2' &&
-    expected?.id === 'R2_STANDING'
-  ) {
+    (
+      ((state.prayerType === 'FAJR' || state.prayerType === 'MAGHRIB') &&
+        expected?.id === 'R2_STANDING') ||
+      (isFourRakahPrayer(state.prayerType) && isFourRakahNextStanding(expected))
+    );
+  if (shouldWaitForPostSujudStanding) {
     if (
       state.prayerType === 'MAGHRIB' &&
       state.sahwAlerts.some((alert) => alert.type === 'EARLY_TASHAHHUD')
+    ) {
+      return state;
+    }
+
+    if (
+      isFourRakahPrayer(state.prayerType) &&
+      state.sahwAlerts.some(
+        (alert) => alert.type === 'MISSING_STAGE' && alert.stageId === expected?.id,
+      )
     ) {
       return state;
     }
@@ -501,7 +538,9 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
       ...state,
       ...(state.prayerType === 'FAJR'
         ? { fajrEarlySittingStartedAt: state.fajrEarlySittingStartedAt ?? Date.now() }
-        : { maghribEarlySittingStartedAt: state.maghribEarlySittingStartedAt ?? Date.now() }),
+        : state.prayerType === 'MAGHRIB'
+          ? { maghribEarlySittingStartedAt: state.maghribEarlySittingStartedAt ?? Date.now() }
+          : { fourRakahEarlySittingStartedAt: state.fourRakahEarlySittingStartedAt ?? Date.now() }),
     };
   }
 
@@ -526,31 +565,37 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
     state.maghribEarlySittingStartedAt
       ? { ...stateAfterFajrEarlyAlert, maghribEarlySittingStartedAt: null }
       : stateAfterFajrEarlyAlert;
+  const stateAfterFourRakahWait =
+    isFourRakahPrayer(state.prayerType) &&
+    pose === 'STANDING' &&
+    state.fourRakahEarlySittingStartedAt
+      ? { ...stateAfterMaghribWait, fourRakahEarlySittingStartedAt: null }
+      : stateAfterMaghribWait;
 
   if (state.prayerCompleted && pose === 'STANDING') {
-    return validateSequenceStage(stateAfterMaghribWait, validatorSequence, 'STANDING');
+    return validateSequenceStage(stateAfterFourRakahWait, validatorSequence, 'STANDING');
   }
 
   if (pose === 'STANDING' && state.sequence.pendingBowing) {
     return validateSequenceStage(
-      validateSequenceStage(stateAfterMaghribWait, validatorSequence, 'BOWING'),
+      validateSequenceStage(stateAfterFourRakahWait, validatorSequence, 'BOWING'),
       validatorSequence,
       'ITIDAL',
     );
   }
 
   if (pose === 'BOWING' && state.sequence.rukuDone) {
-    return addSahwAlert(stateAfterMaghribWait, 'EXTRA_BOWING');
+    return addSahwAlert(stateAfterFourRakahWait, 'EXTRA_BOWING');
   }
 
   if (pose === 'BOWING' || (pose === 'STANDING' && state.prayerStage === 'STANDING')) {
-    return stateAfterMaghribWait;
+    return stateAfterFourRakahWait;
   }
 
-  const stage = stateAfterMaghribWait.prayerStage;
+  const stage = stateAfterFourRakahWait.prayerStage;
   return stage
-    ? validateSequenceStage(stateAfterMaghribWait, validatorSequence, stage)
-    : stateAfterMaghribWait;
+    ? validateSequenceStage(stateAfterFourRakahWait, validatorSequence, stage)
+    : stateAfterFourRakahWait;
 }
 
 /**

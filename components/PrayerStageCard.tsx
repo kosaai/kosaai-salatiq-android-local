@@ -85,17 +85,27 @@ export function PrayerStageCard({
   );
   const prayerStage = state.prayerStage;
   const latestSahwAlert = state.sahwAlerts[state.sahwAlerts.length - 1];
+  const isFourRakahPrayer =
+    state.prayerType === 'DHUHR' || state.prayerType === 'ASR' || state.prayerType === 'ISHA';
   const isPostSujudSittingGrace =
     (
       (state.prayerType === 'FAJR' && state.fajrEarlySittingStartedAt !== null) ||
-      (state.prayerType === 'MAGHRIB' && state.maghribEarlySittingStartedAt !== null)
+      (state.prayerType === 'MAGHRIB' && state.maghribEarlySittingStartedAt !== null) ||
+      (isFourRakahPrayer && state.fourRakahEarlySittingStartedAt !== null)
     ) &&
     prayerStage === 'SUJUD_2';
   const isPostSujudEarlySittingAlert =
-    (state.prayerType === 'FAJR' || state.prayerType === 'MAGHRIB') &&
+    (state.prayerType === 'FAJR' ||
+      state.prayerType === 'MAGHRIB' ||
+      isFourRakahPrayer) &&
     prayerStage === 'SUJUD_2' &&
     currentPose === 'SITTING' &&
-    state.sahwAlerts.some((alert) => alert.stageId === 'R2_EARLY_TASHAHHUD');
+    state.sahwAlerts.some(
+      (alert) =>
+        alert.stageId === 'R2_EARLY_TASHAHHUD' ||
+        (alert.type === 'MISSING_STAGE' &&
+          (alert.stageId === 'R2_STANDING' || alert.stageId === 'R4_STANDING')),
+    );
   const displayedPrayerStage = isPostSujudSittingGrace
     ? 'SUJUD_2'
     : isPostSujudEarlySittingAlert
