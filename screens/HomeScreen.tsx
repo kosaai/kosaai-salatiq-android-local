@@ -40,9 +40,6 @@ export function HomeScreen() {
   const latestSahwAlert = prayerState.sahwAlerts[prayerState.sahwAlerts.length - 1] ?? null;
   const sahwPlayer = useAudioPlayer(require('../assets/audio/sahw-alert.mp3'));
   const playedAlertIdsRef = useRef(new Set<string>());
-  const playedReminderIdsRef = useRef(new Set<string>());
-  const currentPoseRef = useRef(prayerState.currentPose);
-  const firstTashahhudStartedAtRef = useRef(prayerState.firstTashahhudStartedAt);
 
   const playSahwAlert = useCallback(() => {
     void sahwPlayer.seekTo(0).then(() => sahwPlayer.play()).catch(() => {
@@ -57,13 +54,7 @@ export function HomeScreen() {
   }, []);
 
   useEffect(() => {
-    currentPoseRef.current = prayerState.currentPose;
-    firstTashahhudStartedAtRef.current = prayerState.firstTashahhudStartedAt;
-  }, [prayerState.currentPose, prayerState.firstTashahhudStartedAt]);
-
-  useEffect(() => {
     playedAlertIdsRef.current.clear();
-    playedReminderIdsRef.current.clear();
   }, [sessionId]);
 
   useEffect(() => {
@@ -75,27 +66,6 @@ export function HomeScreen() {
     playedAlertIdsRef.current.add(alertId);
     playSahwAlert();
   }, [latestSahwAlert, playSahwAlert]);
-
-  useEffect(() => {
-    const startedAt = prayerState.firstTashahhudStartedAt;
-    if (!startedAt) return;
-
-    const reminderId = `first-tashahhud:${sessionId}:${startedAt}`;
-    const delay = Math.max(0, startedAt + 20_000 - Date.now());
-    const timeout = setTimeout(() => {
-      if (
-        currentPoseRef.current !== 'SITTING' ||
-        firstTashahhudStartedAtRef.current !== startedAt
-      ) {
-        return;
-      }
-      if (playedReminderIdsRef.current.has(reminderId)) return;
-      playedReminderIdsRef.current.add(reminderId);
-      playSahwAlert();
-    }, delay);
-
-    return () => clearTimeout(timeout);
-  }, [playSahwAlert, prayerState.firstTashahhudStartedAt, sessionId]);
 
   return (
     <LinearGradient colors={isDarkMode ? ['#16303F', colors.background] : ['#FFF9EC', lightColors.background]} locations={[0, 0.38]} style={styles.flex}>
@@ -166,6 +136,7 @@ export function HomeScreen() {
             onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
             fajrEarlySittingStartedAt={prayerState.fajrEarlySittingStartedAt}
+            firstTashahhudStartedAt={prayerState.firstTashahhudStartedAt}
             isDarkMode={isDarkMode}
           />
 

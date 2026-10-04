@@ -60,7 +60,6 @@ export function PrayerStageCard({
   isDarkMode,
 }: PrayerStageCardProps) {
   const theme = isDarkMode ? colors : lightColors;
-  const [now, setNow] = useState(0);
   const [connectingDots, setConnectingDots] = useState(1);
   const timelineRows = createPrayerTimeline(prayer);
   const timelineNodes = timelineRows.flatMap((row) => row.nodes);
@@ -114,28 +113,6 @@ export function PrayerStageCard({
   const displayedPose = isFajrPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
   const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
-  const firstTashahhudElapsedSeconds = state.firstTashahhudStartedAt
-    ? Math.max(0, Math.floor((now - state.firstTashahhudStartedAt) / 1_000))
-    : null;
-
-  useEffect(() => {
-    const startedAt = state.firstTashahhudStartedAt;
-    if (!startedAt) return;
-
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    const updateElapsedTime = () => {
-      const currentTime = Date.now();
-      setNow(currentTime);
-      if (currentTime - startedAt < 20_000) {
-        timeout = setTimeout(updateElapsedTime, 1_000 - ((currentTime - startedAt) % 1_000));
-      }
-    };
-
-    updateElapsedTime();
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [state.firstTashahhudStartedAt]);
 
   useEffect(() => {
     if (engineStatus !== 'connecting') return;
@@ -173,15 +150,6 @@ export function PrayerStageCard({
             >
               {getStageMessage(engineStatus, displayedPose, displayedPrayerStage, isExtraBowing, connectingDots)}
             </Text>
-            {firstTashahhudElapsedSeconds !== null ? (
-              <Text style={[firstTashahhudElapsedSeconds >= 20 ? styles.tashahhudWarning : styles.tashahhudTimer, { color: theme.brassSoft }]}>
-                {firstTashahhudElapsedSeconds >= 20
-                  ? state.totalRakahs === 4
-                    ? '⚠️ يبدو أنك نسيت القيام للركعة الثالثة — بقيت ركعتان'
-                    : '⚠️ يبدو أنك نسيت القيام للركعة الثالثة'
-                  : `التشهد الأول: ${firstTashahhudElapsedSeconds} ثانية`}
-              </Text>
-            ) : null}
           </View>
         </View>
         {showConfidence ? (
@@ -277,8 +245,6 @@ const styles = StyleSheet.create({
   connectionErrorCopy: { alignItems: 'center' },
   currentText: { color: colors.ivory, fontSize: 15, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
   connectionErrorText: { textAlign: 'center' },
-  tashahhudTimer: { marginTop: 4, color: colors.brassSoft, fontSize: 12, textAlign: 'right', writingDirection: 'rtl' },
-  tashahhudWarning: { marginTop: 4, color: colors.brassSoft, fontSize: 12, textAlign: 'right', writingDirection: 'rtl' },
   confidence: { minWidth: 48, alignItems: 'flex-start', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.line, paddingRight: 12 },
   confidenceLabel: { color: colors.muted, fontSize: 10.5, writingDirection: 'rtl' },
   confidenceValue: { color: colors.brassSoft, fontSize: 16, fontWeight: '700', marginTop: 3, fontVariant: ['tabular-nums'] },

@@ -23,6 +23,7 @@ type PrayerCameraProps = {
   onStartNewPrayerSession: () => void;
   sessionId: number;
   fajrEarlySittingStartedAt: number | null;
+  firstTashahhudStartedAt: number | null;
   isDarkMode: boolean;
 };
 
@@ -127,6 +128,7 @@ export function PrayerCamera({
   onStartNewPrayerSession,
   sessionId,
   fajrEarlySittingStartedAt,
+  firstTashahhudStartedAt,
   isDarkMode,
 }: PrayerCameraProps) {
   const theme = isDarkMode ? colors : lightColors;
@@ -154,7 +156,9 @@ export function PrayerCamera({
   const [prayerStartedSessionId, setPrayerStartedSessionId] = useState<number | null>(null);
   const [finishedPrayer, setFinishedPrayer] = useState(false);
   const [pendingNewSessionStartId, setPendingNewSessionStartId] = useState<number | null>(null);
+  const [firstTashahhudReminderSessionId, setFirstTashahhudReminderSessionId] = useState<number | null>(null);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
+  const showFirstTashahhudReminder = firstTashahhudReminderSessionId === sessionId;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
     engineStatus === 'connected' &&
@@ -185,6 +189,19 @@ export function PrayerCamera({
       if (timeout) clearTimeout(timeout);
     };
   }, [fajrEarlySittingStartedAt]);
+
+  useEffect(() => {
+    if (!isPrayerStarted || !firstTashahhudStartedAt) return;
+
+    const reminderSessionId = sessionId;
+    const reminderTimer = setTimeout(() => {
+      if (reminderSessionId === sessionIdRef.current) {
+        setFirstTashahhudReminderSessionId(reminderSessionId);
+      }
+    }, Math.max(0, firstTashahhudStartedAt + 60_000 - Date.now()));
+
+    return () => clearTimeout(reminderTimer);
+  }, [firstTashahhudStartedAt, isPrayerStarted, sessionId]);
 
   const setCountdown = useCallback((value: number | null) => {
     setCountdownState(value === null ? null : { sessionId: sessionIdRef.current, value });
@@ -479,6 +496,7 @@ export function PrayerCamera({
     stopLiveLoop();
     setCountdown(null);
     setPrayerStartedSessionId(null);
+    setFirstTashahhudReminderSessionId(null);
     setFinishedPrayer(true);
   }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
 
@@ -564,6 +582,23 @@ export function PrayerCamera({
         <View style={[styles.earlySittingNotice, { borderColor: theme.brassDim }]}>
           <Text style={[styles.earlySittingNoticeText, { color: theme.brassSoft }]}>
             تم اكتشاف جلوس — جاري الانتظار {Math.min(10, Math.max(0, 10 - Math.floor((earlySittingNow - fajrEarlySittingStartedAt) / 1_000)))} ثوانٍ
+          </Text>
+        </View>
+      ) : null}
+
+      {showFirstTashahhudReminder ? (
+        <View
+          accessibilityRole="alert"
+          style={[
+            styles.firstTashahhudReminder,
+            {
+              borderColor: theme.brassDim,
+              backgroundColor: isDarkMode ? 'rgba(201, 147, 46, 0.12)' : 'rgba(180, 122, 22, 0.08)',
+            },
+          ]}
+        >
+          <Text style={[styles.firstTashahhudReminderText, { color: theme.brassSoft }]}>
+            ربما نسيت القيام بعد التشهد الأول. إذا كنت قد أتممت الصلاة فتجاهل هذا التنبيه.
           </Text>
         </View>
       ) : null}
@@ -683,6 +718,14 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   earlySittingNoticeText: { fontSize: 13.5, fontWeight: '700', textAlign: 'center', writingDirection: 'rtl' },
+  firstTashahhudReminder: {
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  firstTashahhudReminderText: { fontSize: 13.5, fontWeight: '700', lineHeight: 22, textAlign: 'right', writingDirection: 'rtl' },
   flipButton: {
     position: 'absolute',
     left: 14,
