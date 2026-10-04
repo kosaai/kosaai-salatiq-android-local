@@ -89,9 +89,9 @@ function parsePredictionResponse(value: unknown): PredictionResponse {
   };
 }
 
-/** Sends one cached camera image to the FastAPI /predict endpoint. */
+/** Sends one captured camera frame to the FastAPI /predict endpoint. */
 export async function predictImage(
-  uri: string,
+  image: string | Blob,
   signal?: AbortSignal,
   onFrameSize?: (frameSizeKb: number) => void,
 ): Promise<PredictionResponse> {
@@ -103,25 +103,31 @@ export async function predictImage(
   let timedOut = false;
 
   try {
-    logYolo('photo uri:', uri);
+    let blob: Blob;
+    if (typeof image === 'string') {
+      logYolo('photo uri:', image);
 
-    let imageResponse: Response;
-    try {
-      imageResponse = await fetch(uri);
-    } catch (error) {
-      const name = error instanceof Error ? error.name : 'UnknownError';
-      const message = error instanceof Error ? error.message : String(error);
-      if (__DEV__) {
-        console.error('[YOLO] photo read failed:', { name, message });
+      let imageResponse: Response;
+      try {
+        imageResponse = await fetch(image);
+      } catch (error) {
+        const name = error instanceof Error ? error.name : 'UnknownError';
+        const message = error instanceof Error ? error.message : String(error);
+        if (__DEV__) {
+          console.error('[YOLO] photo read failed:', { name, message });
+        }
+        throw error;
       }
-      throw error;
+
+      if (!imageResponse.ok) {
+        throw new Error(`Unable to read captured photo (${imageResponse.status})`);
+      }
+
+      blob = await imageResponse.blob();
+    } else {
+      blob = image;
     }
 
-    if (!imageResponse.ok) {
-      throw new Error(`Unable to read captured photo (${imageResponse.status})`);
-    }
-
-    const blob = await imageResponse.blob();
     onFrameSize?.(blob.size / 1024);
     const formData = new FormData();
     formData.append('file', blob, 'frame.jpg');
