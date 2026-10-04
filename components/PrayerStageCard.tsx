@@ -40,8 +40,15 @@ function getStageMessage(
   stage: PrayerStage,
   isExtraBowing: boolean,
   connectingDots: number,
+  tashahhudKind: 'first' | 'final' | null,
 ) {
   if (isExtraBowing) return 'المرحلة الحالية: ركوع زائد';
+  if (stage === 'TASHAHHUD' && tashahhudKind === 'first') {
+    return 'المرحلة الحالية: جلوس التشهد الأول';
+  }
+  if (stage === 'TASHAHHUD' && tashahhudKind === 'final') {
+    return 'المرحلة الحالية: جلوس التشهد الأخير';
+  }
   const label = stage ? stageLabels[stage] : pose ? poseLabels[pose] : undefined;
   if (label) return `المرحلة الحالية: ${label}`;
 
@@ -114,6 +121,11 @@ export function PrayerStageCard({
   const displayedPose = isPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
   const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
+  const tashahhudKind = state.sequence.awaitingFirstTashahhud
+    ? 'first'
+    : state.sequence.awaitingFinalTashahhud
+      ? 'final'
+      : null;
 
   useEffect(() => {
     if (engineStatus !== 'connecting') return;
@@ -149,7 +161,14 @@ export function PrayerStageCard({
                 engineStatus === 'error' && styles.connectionErrorText,
               ]}
             >
-              {getStageMessage(engineStatus, displayedPose, displayedPrayerStage, isExtraBowing, connectingDots)}
+              {getStageMessage(
+                engineStatus,
+                displayedPose,
+                displayedPrayerStage,
+                isExtraBowing,
+                connectingDots,
+                tashahhudKind,
+              )}
             </Text>
           </View>
         </View>

@@ -99,7 +99,6 @@ export function PrayerPoseIcon({ pose, stage, size = 56 }: PrayerPoseIconProps) 
           xml={renderedXml}
           width={size}
           height={size}
-          style={styles.mirroredSvg}
           override={{
             fill: colors.brassSoft,
             color: colors.brassSoft,
@@ -116,6 +115,5 @@ export function PrayerPoseIcon({ pose, stage, size = 56 }: PrayerPoseIconProps) 
 
 const styles = StyleSheet.create({
   container: { alignItems: 'center', justifyContent: 'center' },
-  mirroredSvg: { transform: [{ scaleX: -1 }] },
   placeholder: { width: '100%', height: '100%' },
 });
