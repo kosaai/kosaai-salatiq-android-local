@@ -5,7 +5,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -329,7 +328,7 @@ export function PrayerCamera({
         const cycleStartedAt = performance.now();
         const captureStartedAt = performance.now();
         const picture = await cameraRef.current.takePictureAsync({
-          quality: 0.5,
+          quality: 0.3,
           shutterSound: false,
           base64: false,
           exif: false,
@@ -345,22 +344,17 @@ export function PrayerCamera({
 
         let uploadUri = picture.uri;
         let resize = 0;
-        const shouldResize = picture.width > MAX_UPLOAD_WIDTH;
-        if (Platform.OS === 'web' || shouldResize) {
-          const resizeStartedAt = shouldResize ? performance.now() : null;
+        if (picture.width > MAX_UPLOAD_WIDTH) {
+          const resizeStartedAt = performance.now();
           const image = ImageManipulator.manipulate(picture.uri);
-          if (shouldResize) {
-            image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
-          }
+          image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
           const renderedImage = await image.renderAsync();
           const resizedImage = await renderedImage.saveAsync({
             format: SaveFormat.JPEG,
-            compress: 0.5,
+            compress: 0.3,
           });
           uploadUri = resizedImage.uri;
-          if (resizeStartedAt !== null) {
-            resize = Math.round(performance.now() - resizeStartedAt);
-          }
+          resize = Math.round(performance.now() - resizeStartedAt);
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
