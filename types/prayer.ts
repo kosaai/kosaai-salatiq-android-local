@@ -75,6 +75,7 @@ export interface PrayerState {
   skippedStageIds: string[];
   prayerCompleted: boolean;
   firstTashahhudStartedAt: number | null;
+  preSujudSittingStartedAt: number | null;
   fajrEarlySittingStartedAt: number | null;
   maghribEarlySittingStartedAt: number | null;
   fourRakahEarlySittingStartedAt: number | null;

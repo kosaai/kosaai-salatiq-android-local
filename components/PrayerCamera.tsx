@@ -22,6 +22,7 @@ type PrayerCameraProps = {
   onPoseDetected: (pose: PredictionPose | null) => void;
   onStartNewPrayerSession: () => void;
   sessionId: number;
+  preSujudSittingStartedAt: number | null;
   fajrEarlySittingStartedAt: number | null;
   maghribEarlySittingStartedAt: number | null;
   fourRakahEarlySittingStartedAt: number | null;
@@ -138,6 +139,7 @@ export function PrayerCamera({
   onPoseDetected,
   onStartNewPrayerSession,
   sessionId,
+  preSujudSittingStartedAt,
   fajrEarlySittingStartedAt,
   maghribEarlySittingStartedAt,
   fourRakahEarlySittingStartedAt,
@@ -183,6 +185,7 @@ export function PrayerCamera({
   const isSourceReady = isVideoMode ? isVideoReady : isCameraReady;
   const postSujudSittingStartedAt =
     fajrEarlySittingStartedAt ?? maghribEarlySittingStartedAt ?? fourRakahEarlySittingStartedAt;
+  const sittingGraceStartedAt = preSujudSittingStartedAt ?? postSujudSittingStartedAt;
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
     engineStatus === 'connected' &&
@@ -197,14 +200,14 @@ export function PrayerCamera({
   }, [onPoseDetected]);
 
   useEffect(() => {
-    if (!postSujudSittingStartedAt) return;
+    if (!sittingGraceStartedAt) return;
 
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const updateCountdown = () => {
       const now = Date.now();
       setEarlySittingNow(now);
-      if (now - postSujudSittingStartedAt < 10_000) {
-        timeout = setTimeout(updateCountdown, 1_000 - ((now - postSujudSittingStartedAt) % 1_000));
+      if (now - sittingGraceStartedAt < 10_000) {
+        timeout = setTimeout(updateCountdown, 1_000 - ((now - sittingGraceStartedAt) % 1_000));
       }
     };
 
@@ -212,7 +215,7 @@ export function PrayerCamera({
     return () => {
       if (timeout) clearTimeout(timeout);
     };
-  }, [postSujudSittingStartedAt]);
+  }, [sittingGraceStartedAt]);
 
   useEffect(() => {
     if (!isPrayerStarted || !firstTashahhudStartedAt) return;
@@ -733,10 +736,10 @@ export function PrayerCamera({
         </View>
       </LinearGradient>
 
-      {postSujudSittingStartedAt ? (
+      {sittingGraceStartedAt ? (
         <View style={[styles.earlySittingNotice, { borderColor: theme.brassDim }]}>
           <Text style={[styles.earlySittingNoticeText, { color: theme.brassSoft }]}>
-            تم اكتشاف جلوس — جاري الانتظار {Math.min(10, Math.max(0, 10 - Math.floor((earlySittingNow - postSujudSittingStartedAt) / 1_000)))} ثوانٍ
+            تم اكتشاف جلوس — جاري الانتظار {Math.min(10, Math.max(0, 10 - Math.floor((earlySittingNow - sittingGraceStartedAt) / 1_000)))} ثوانٍ
           </Text>
         </View>
       ) : null}

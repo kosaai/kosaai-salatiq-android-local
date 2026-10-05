@@ -36,6 +36,7 @@ export function createInitialPrayerState(prayer: PrayerType = 'FAJR'): PrayerSta
     skippedStageIds: [],
     prayerCompleted: false,
     firstTashahhudStartedAt: null,
+    preSujudSittingStartedAt: null,
     fajrEarlySittingStartedAt: null,
     maghribEarlySittingStartedAt: null,
     fourRakahEarlySittingStartedAt: null,
@@ -368,6 +369,10 @@ function isFourRakahNextStanding(stage: PrayerSequenceStage | undefined) {
   return stage?.id === 'R2_STANDING' || stage?.id === 'R4_STANDING';
 }
 
+function isNextFirstSujud(stage: PrayerSequenceStage | undefined) {
+  return stage?.stage === 'SUJUD_1';
+}
+
 function validateSequenceStage(
   state: PrayerState,
   sequence: readonly PrayerSequenceStage[],
@@ -457,6 +462,24 @@ export function confirmFajrEarlySittingTimeout(state: PrayerState): PrayerState 
   };
 }
 
+export function confirmPreSujudSittingTimeout(state: PrayerState): PrayerState {
+  const expected = getValidatorSequence(state.prayerType)?.[state.expectedIndex];
+  if (!state.preSujudSittingStartedAt) return state;
+
+  if (
+    state.currentPose !== 'SITTING' ||
+    state.prayerStage !== 'ITIDAL' ||
+    !isNextFirstSujud(expected)
+  ) {
+    return { ...state, preSujudSittingStartedAt: null };
+  }
+
+  return {
+    ...addFajrAlert(state, 'MISSING_STAGE', expected ?? null),
+    preSujudSittingStartedAt: null,
+  };
+}
+
 export function confirmMaghribEarlySittingTimeout(state: PrayerState): PrayerState {
   if (
     state.prayerType !== 'MAGHRIB' ||
@@ -530,6 +553,26 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
   if (pose === 'TRANSITION' || pose === 'UNKNOWN') return advanceBasePrayerSequence(state, pose);
 
   const expected = validatorSequence[state.expectedIndex];
+  const shouldWaitForPreSujudSitting =
+    pose === 'SITTING' &&
+    state.prayerStage === 'ITIDAL' &&
+    isNextFirstSujud(expected);
+  if (shouldWaitForPreSujudSitting) {
+    if (
+      state.sahwAlerts.some(
+        (alert) => alert.type === 'MISSING_STAGE' && alert.stageId === expected?.id,
+      )
+    ) {
+      return state;
+    }
+
+    return {
+      ...state,
+      currentPose: pose,
+      preSujudSittingStartedAt: state.preSujudSittingStartedAt ?? Date.now(),
+    };
+  }
+
   const shouldWaitForPostSujudStanding =
     pose === 'SITTING' &&
     state.prayerStage === 'SUJUD_2' &&
@@ -570,12 +613,16 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
     baseState.sahwAlerts.length > state.sahwAlerts.length
       ? { ...baseState, sahwAlerts: state.sahwAlerts, sahwWarning: state.sahwWarning }
       : baseState;
+  const stateAfterPreSujudWait =
+    state.preSujudSittingStartedAt && pose !== 'SITTING'
+      ? { ...nextState, preSujudSittingStartedAt: null }
+      : nextState;
   const stateAfterFajrWait =
     state.prayerType === 'FAJR' &&
     pose === 'STANDING' &&
     state.fajrEarlySittingStartedAt
-      ? { ...nextState, fajrEarlySittingStartedAt: null }
-      : nextState;
+      ? { ...stateAfterPreSujudWait, fajrEarlySittingStartedAt: null }
+      : stateAfterPreSujudWait;
   const stateAfterFajrEarlyAlert =
     state.prayerType === 'FAJR' && pose === 'STANDING'
       ? clearFajrEarlySittingAlert(stateAfterFajrWait)

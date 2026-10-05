@@ -4,6 +4,7 @@ import {
   confirmFajrEarlySittingTimeout,
   confirmFourRakahEarlySittingTimeout,
   confirmMaghribEarlySittingTimeout,
+  confirmPreSujudSittingTimeout,
   createInitialPrayerState,
   normalizePrayerEngineState,
 } from '../services/prayerEngine';
@@ -16,6 +17,21 @@ export function usePrayerSession() {
   );
   const [cameraStatus, setCameraStatus] = useState<CameraStatus>('OFF');
   const [sessionId, setSessionId] = useState(0);
+
+  useEffect(() => {
+    const startedAt = prayerState.preSujudSittingStartedAt;
+    if (!startedAt) return;
+
+    const timeout = setTimeout(() => {
+      setPrayerState((current) =>
+        current.preSujudSittingStartedAt === startedAt
+          ? confirmPreSujudSittingTimeout(current)
+          : current,
+      );
+    }, Math.max(0, startedAt + 10_000 - Date.now()));
+
+    return () => clearTimeout(timeout);
+  }, [prayerState.preSujudSittingStartedAt]);
 
   useEffect(() => {
     const startedAt = prayerState.fajrEarlySittingStartedAt;

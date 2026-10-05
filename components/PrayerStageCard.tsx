@@ -94,6 +94,9 @@ export function PrayerStageCard({
   const latestSahwAlert = state.sahwAlerts[state.sahwAlerts.length - 1];
   const isFourRakahPrayer =
     state.prayerType === 'DHUHR' || state.prayerType === 'ASR' || state.prayerType === 'ISHA';
+  const isPreSujudSittingGrace =
+    state.preSujudSittingStartedAt !== null &&
+    prayerStage === 'ITIDAL';
   const isPostSujudSittingGrace =
     (
       (state.prayerType === 'FAJR' && state.fajrEarlySittingStartedAt !== null) ||
@@ -113,12 +116,18 @@ export function PrayerStageCard({
         (alert.type === 'MISSING_STAGE' &&
           (alert.stageId === 'R2_STANDING' || alert.stageId === 'R4_STANDING')),
     );
-  const displayedPrayerStage = isPostSujudSittingGrace
+  const displayedPrayerStage = isPreSujudSittingGrace
+    ? 'ITIDAL'
+    : isPostSujudSittingGrace
     ? 'SUJUD_2'
     : isPostSujudEarlySittingAlert
       ? 'TASHAHHUD'
       : prayerStage;
-  const displayedPose = isPostSujudSittingGrace ? 'PROSTRATING' : currentPose;
+  const displayedPose = isPreSujudSittingGrace
+    ? 'STANDING'
+    : isPostSujudSittingGrace
+      ? 'PROSTRATING'
+      : currentPose;
   const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
   const tashahhudKind = state.sequence.awaitingFirstTashahhud
