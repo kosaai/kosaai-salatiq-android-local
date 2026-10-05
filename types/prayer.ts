@@ -52,6 +52,12 @@ export interface SahwAlert {
   stageId?: string;
 }
 
+export interface ActiveSahwEvent {
+  alertType: SahwAlertType;
+  sourceStageId?: string;
+  recoveryStageIds: string[];
+}
+
 export interface PrayerSequenceState {
   pendingBowing: boolean;
   rukuDone: boolean;
@@ -70,15 +76,14 @@ export interface PrayerState {
   sequence: PrayerSequenceState;
   sahwWarning: string | null;
   sahwAlerts: SahwAlert[];
+  activeSahwEvent: ActiveSahwEvent | null;
   expectedIndex: number;
   completedStageIds: string[];
   skippedStageIds: string[];
   prayerCompleted: boolean;
   firstTashahhudStartedAt: number | null;
-  preSujudSittingStartedAt: number | null;
-  fajrEarlySittingStartedAt: number | null;
-  maghribEarlySittingStartedAt: number | null;
-  fourRakahEarlySittingStartedAt: number | null;
+  preSujudTransitionStartedAt: number | null;
+  postSujudTransitionStartedAt: number | null;
   prayerStarted: boolean;
 }
 

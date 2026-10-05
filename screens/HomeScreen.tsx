@@ -135,10 +135,8 @@ export function HomeScreen() {
             onPoseDetected={(pose) => applyEngineEvent({ state: { currentPose: pose } })}
             onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
-            preSujudSittingStartedAt={prayerState.preSujudSittingStartedAt}
-            fajrEarlySittingStartedAt={prayerState.fajrEarlySittingStartedAt}
-            maghribEarlySittingStartedAt={prayerState.maghribEarlySittingStartedAt}
-            fourRakahEarlySittingStartedAt={prayerState.fourRakahEarlySittingStartedAt}
+            preSujudTransitionStartedAt={prayerState.preSujudTransitionStartedAt}
+            postSujudTransitionStartedAt={prayerState.postSujudTransitionStartedAt}
             firstTashahhudStartedAt={prayerState.firstTashahhudStartedAt}
             isDarkMode={isDarkMode}
           />

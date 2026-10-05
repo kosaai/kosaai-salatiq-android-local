@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   advancePrayerSequence,
-  confirmFajrEarlySittingTimeout,
-  confirmFourRakahEarlySittingTimeout,
-  confirmMaghribEarlySittingTimeout,
-  confirmPreSujudSittingTimeout,
+  confirmPostSujudTransitionTimeout,
+  confirmPreSujudTransitionTimeout,
   createInitialPrayerState,
   normalizePrayerEngineState,
 } from '../services/prayerEngine';
@@ -19,64 +17,34 @@ export function usePrayerSession() {
   const [sessionId, setSessionId] = useState(0);
 
   useEffect(() => {
-    const startedAt = prayerState.preSujudSittingStartedAt;
+    const startedAt = prayerState.preSujudTransitionStartedAt;
     if (!startedAt) return;
 
     const timeout = setTimeout(() => {
       setPrayerState((current) =>
-        current.preSujudSittingStartedAt === startedAt
-          ? confirmPreSujudSittingTimeout(current)
+        current.preSujudTransitionStartedAt === startedAt
+          ? confirmPreSujudTransitionTimeout(current)
           : current,
       );
     }, Math.max(0, startedAt + 10_000 - Date.now()));
 
     return () => clearTimeout(timeout);
-  }, [prayerState.preSujudSittingStartedAt]);
+  }, [prayerState.preSujudTransitionStartedAt]);
 
   useEffect(() => {
-    const startedAt = prayerState.fajrEarlySittingStartedAt;
+    const startedAt = prayerState.postSujudTransitionStartedAt;
     if (!startedAt) return;
 
     const timeout = setTimeout(() => {
       setPrayerState((current) =>
-        current.fajrEarlySittingStartedAt === startedAt
-          ? confirmFajrEarlySittingTimeout(current)
+        current.postSujudTransitionStartedAt === startedAt
+          ? confirmPostSujudTransitionTimeout(current)
           : current,
       );
     }, Math.max(0, startedAt + 10_000 - Date.now()));
 
     return () => clearTimeout(timeout);
-  }, [prayerState.fajrEarlySittingStartedAt]);
-
-  useEffect(() => {
-    const startedAt = prayerState.maghribEarlySittingStartedAt;
-    if (!startedAt) return;
-
-    const timeout = setTimeout(() => {
-      setPrayerState((current) =>
-        current.maghribEarlySittingStartedAt === startedAt
-          ? confirmMaghribEarlySittingTimeout(current)
-          : current,
-      );
-    }, Math.max(0, startedAt + 10_000 - Date.now()));
-
-    return () => clearTimeout(timeout);
-  }, [prayerState.maghribEarlySittingStartedAt]);
-
-  useEffect(() => {
-    const startedAt = prayerState.fourRakahEarlySittingStartedAt;
-    if (!startedAt) return;
-
-    const timeout = setTimeout(() => {
-      setPrayerState((current) =>
-        current.fourRakahEarlySittingStartedAt === startedAt
-          ? confirmFourRakahEarlySittingTimeout(current)
-          : current,
-      );
-    }, Math.max(0, startedAt + 10_000 - Date.now()));
-
-    return () => clearTimeout(timeout);
-  }, [prayerState.fourRakahEarlySittingStartedAt]);
+  }, [prayerState.postSujudTransitionStartedAt]);
 
   const selectPrayer = useCallback((prayer: PrayerType) => {
     if (prayer === selectedPrayer) return;

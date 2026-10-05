@@ -22,10 +22,8 @@ type PrayerCameraProps = {
   onPoseDetected: (pose: PredictionPose | null) => void;
   onStartNewPrayerSession: () => void;
   sessionId: number;
-  preSujudSittingStartedAt: number | null;
-  fajrEarlySittingStartedAt: number | null;
-  maghribEarlySittingStartedAt: number | null;
-  fourRakahEarlySittingStartedAt: number | null;
+  preSujudTransitionStartedAt: number | null;
+  postSujudTransitionStartedAt: number | null;
   firstTashahhudStartedAt: number | null;
   isDarkMode: boolean;
 };
@@ -36,7 +34,7 @@ type SessionValue<T> = {
 };
 
 type PoseCandidate = {
-  pose: Exclude<PredictionPose, 'TRANSITION'>;
+  pose: PredictionPose;
   startedAt: number;
 };
 
@@ -97,12 +95,13 @@ function prepareWebVideoFrame(video: HTMLVideoElement) {
   return encodeWebFrame(video, video.videoWidth, video.videoHeight);
 }
 
-function isDetectedPrayerPose(pose: PredictionPose | null): pose is Exclude<PredictionPose, 'TRANSITION'> {
+function isDetectedPrayerPose(pose: PredictionPose | null): pose is PredictionPose {
   return (
     pose === 'STANDING' ||
     pose === 'BOWING' ||
     pose === 'PROSTRATING' ||
-    pose === 'SITTING'
+    pose === 'SITTING' ||
+    pose === 'TRANSITION'
   );
 }
 
@@ -139,10 +138,8 @@ export function PrayerCamera({
   onPoseDetected,
   onStartNewPrayerSession,
   sessionId,
-  preSujudSittingStartedAt,
-  fajrEarlySittingStartedAt,
-  maghribEarlySittingStartedAt,
-  fourRakahEarlySittingStartedAt,
+  preSujudTransitionStartedAt,
+  postSujudTransitionStartedAt,
   firstTashahhudStartedAt,
   isDarkMode,
 }: PrayerCameraProps) {
@@ -183,9 +180,8 @@ export function PrayerCamera({
   const showFirstTashahhudReminder = firstTashahhudReminderSessionId === sessionId;
   const isVideoMode = Platform.OS === 'web' && videoUri !== null;
   const isSourceReady = isVideoMode ? isVideoReady : isCameraReady;
-  const postSujudSittingStartedAt =
-    fajrEarlySittingStartedAt ?? maghribEarlySittingStartedAt ?? fourRakahEarlySittingStartedAt;
-  const sittingGraceStartedAt = preSujudSittingStartedAt ?? postSujudSittingStartedAt;
+  const graceStartedAt = preSujudTransitionStartedAt ?? postSujudTransitionStartedAt;
+  const graceNoticePrefix = 'تم اكتشاف حركة انتقال';
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
     engineStatus === 'connected' &&
@@ -200,14 +196,14 @@ export function PrayerCamera({
   }, [onPoseDetected]);
 
   useEffect(() => {
-    if (!sittingGraceStartedAt) return;
+    if (!graceStartedAt) return;
 
     let timeout: ReturnType<typeof setTimeout> | null = null;
     const updateCountdown = () => {
       const now = Date.now();
       setEarlySittingNow(now);
-      if (now - sittingGraceStartedAt < 10_000) {
-        timeout = setTimeout(updateCountdown, 1_000 - ((now - sittingGraceStartedAt) % 1_000));
+      if (now - graceStartedAt < 10_000) {
+        timeout = setTimeout(updateCountdown, 1_000 - ((now - graceStartedAt) % 1_000));
       }
     };
 
@@ -215,7 +211,7 @@ export function PrayerCamera({
     return () => {
       if (timeout) clearTimeout(timeout);
     };
-  }, [sittingGraceStartedAt]);
+  }, [graceStartedAt]);
 
   useEffect(() => {
     if (!isPrayerStarted || !firstTashahhudStartedAt) return;
@@ -736,10 +732,10 @@ export function PrayerCamera({
         </View>
       </LinearGradient>
 
-      {sittingGraceStartedAt ? (
+      {graceStartedAt ? (
         <View style={[styles.earlySittingNotice, { borderColor: theme.brassDim }]}>
           <Text style={[styles.earlySittingNoticeText, { color: theme.brassSoft }]}>
-            تم اكتشاف جلوس — جاري الانتظار {Math.min(10, Math.max(0, 10 - Math.floor((earlySittingNow - sittingGraceStartedAt) / 1_000)))} ثوانٍ
+            {graceNoticePrefix} — جاري الانتظار {Math.min(10, Math.max(0, 10 - Math.floor((earlySittingNow - graceStartedAt) / 1_000)))} ثوانٍ
           </Text>
         </View>
       ) : null}
