@@ -19,21 +19,11 @@ function isRequestCancellation(error: unknown) {
   );
 }
 
-export type PoseKeypoint = {
-  x: number;
-  y: number;
-  confidence: number;
-};
-
-export type PredictionPose = Exclude<PrayerPose, 'UNKNOWN'>;
+export type PredictionPose = Exclude<PrayerPose, 'UNKNOWN' | 'TRANSITION'>;
 
 export type PredictionResponse = {
-  status: 'ok' | 'error';
-  person_detected?: boolean;
-  pose?: PredictionPose | null;
-  pose_ar?: string | null;
-  keypoints?: PoseKeypoint[] | null;
-  message?: string;
+  pose: PredictionPose;
+  confidence: number;
 };
 
 const predictionPoses: ReadonlySet<PredictionPose> = new Set([
@@ -41,19 +31,7 @@ const predictionPoses: ReadonlySet<PredictionPose> = new Set([
   'BOWING',
   'PROSTRATING',
   'SITTING',
-  'TRANSITION',
 ]);
-
-function isPoseKeypoint(value: unknown): value is PoseKeypoint {
-  if (!value || typeof value !== 'object') return false;
-
-  const keypoint = value as Record<string, unknown>;
-  return (
-    typeof keypoint.x === 'number' &&
-    typeof keypoint.y === 'number' &&
-    typeof keypoint.confidence === 'number'
-  );
-}
 
 function parsePredictionResponse(value: unknown): PredictionResponse {
   if (!value || typeof value !== 'object') {
@@ -61,31 +39,20 @@ function parsePredictionResponse(value: unknown): PredictionResponse {
   }
 
   const response = value as Record<string, unknown>;
-  if (response.status !== 'ok' && response.status !== 'error') {
-    throw new Error('Invalid prediction status');
+  if (typeof response.pose !== 'string' || !predictionPoses.has(response.pose as PredictionPose)) {
+    throw new Error('Invalid prediction pose');
+  }
+  if (
+    typeof response.confidence !== 'number' ||
+    !Number.isFinite(response.confidence) ||
+    response.confidence < 0 || response.confidence > 1
+  ) {
+    throw new Error('Invalid prediction confidence');
   }
 
-  const keypoints = Array.isArray(response.keypoints)
-    ? response.keypoints.filter(isPoseKeypoint)
-    : response.keypoints === null
-      ? null
-      : undefined;
-  const pose =
-    response.pose === null
-      ? null
-      : typeof response.pose === 'string' && predictionPoses.has(response.pose as PredictionPose)
-        ? (response.pose as PredictionPose)
-        : undefined;
-
   return {
-    status: response.status,
-    person_detected:
-      typeof response.person_detected === 'boolean' ? response.person_detected : undefined,
-    pose,
-    pose_ar:
-      response.pose_ar === null ? null : typeof response.pose_ar === 'string' ? response.pose_ar : undefined,
-    keypoints,
-    message: typeof response.message === 'string' ? response.message : undefined,
+    pose: response.pose as PredictionPose,
+    confidence: response.confidence,
   };
 }
 

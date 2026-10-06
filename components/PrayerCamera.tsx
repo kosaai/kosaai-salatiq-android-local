@@ -19,7 +19,7 @@ type PrayerCameraProps = {
   onStatusChange: (status: CameraStatus) => void;
   engineStatus: EngineStatus;
   onCheckEngine: () => Promise<EngineStatus>;
-  onPoseDetected: (pose: PredictionPose | null) => void;
+  onPoseDetected: (pose: PredictionPose, confidence: number) => void;
   onStartNewPrayerSession: () => void;
   sessionId: number;
   preSujudTransitionStartedAt: number | null;
@@ -100,8 +100,7 @@ function isDetectedPrayerPose(pose: PredictionPose | null): pose is PredictionPo
     pose === 'STANDING' ||
     pose === 'BOWING' ||
     pose === 'PROSTRATING' ||
-    pose === 'SITTING' ||
-    pose === 'TRANSITION'
+    pose === 'SITTING'
   );
 }
 
@@ -550,27 +549,24 @@ export function PrayerCamera({
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
 
-        if (result.status === 'ok') {
-          const pose = result.person_detected ? result.pose ?? null : null;
-          const receivedPose = pose ?? 'no-person';
-          if (receivedPose !== lastReceivedPoseRef.current) {
-            logLive(`pose received: ${receivedPose}`);
-            lastReceivedPoseRef.current = receivedPose;
-          }
+        const pose = result.pose;
+        if (pose !== lastReceivedPoseRef.current) {
+          logLive(`pose received: ${pose}`);
+          lastReceivedPoseRef.current = pose;
+        }
 
-          if (!isDetectedPrayerPose(pose)) {
-            poseCandidateRef.current = null;
-          } else {
-            const now = Date.now();
-            const candidate = poseCandidateRef.current;
+        if (!isDetectedPrayerPose(pose)) {
+          poseCandidateRef.current = null;
+        } else {
+          const now = Date.now();
+          const candidate = poseCandidateRef.current;
 
-            if (!candidate || candidate.pose !== pose) {
-              poseCandidateRef.current = { pose, startedAt: now };
-            } else if (now - candidate.startedAt >= POSE_STABILITY_MS && pose !== lastLivePoseRef.current) {
-              onPoseDetectedRef.current(pose);
-              logLive(`pose: ${pose}`);
-              lastLivePoseRef.current = pose;
-            }
+          if (!candidate || candidate.pose !== pose) {
+            poseCandidateRef.current = { pose, startedAt: now };
+          } else if (now - candidate.startedAt >= POSE_STABILITY_MS && pose !== lastLivePoseRef.current) {
+            onPoseDetectedRef.current(pose, result.confidence);
+            logLive(`pose: ${pose}`);
+            lastLivePoseRef.current = pose;
           }
         }
       } catch {

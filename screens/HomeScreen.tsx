@@ -132,7 +132,7 @@ export function HomeScreen() {
             onStatusChange={setCameraStatus}
             engineStatus={engineStatus}
             onCheckEngine={checkConnection}
-            onPoseDetected={(pose) => applyEngineEvent({ state: { currentPose: pose } })}
+            onPoseDetected={(pose, confidence) => applyEngineEvent({ state: { currentPose: pose, confidence } })}
             onStartNewPrayerSession={startNewPrayerSession}
             sessionId={sessionId}
             preSujudTransitionStartedAt={prayerState.preSujudTransitionStartedAt}
