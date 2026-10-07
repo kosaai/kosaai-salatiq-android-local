@@ -1,7 +1,7 @@
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Platform,
@@ -90,11 +90,6 @@ async function prepareWebFrame(uri: string) {
   return encodeWebFrame(image, image.naturalWidth, image.naturalHeight);
 }
 
-// TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-function prepareWebVideoFrame(video: HTMLVideoElement) {
-  return encodeWebFrame(video, video.videoWidth, video.videoHeight);
-}
-
 function isDetectedPrayerPose(pose: PredictionPose | null): pose is PredictionPose {
   return (
     pose === 'STANDING' ||
@@ -144,10 +139,6 @@ export function PrayerCamera({
 }: PrayerCameraProps) {
   const theme = isDarkMode ? colors : lightColors;
   const cameraRef = useRef<CameraView>(null);
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const videoInputRef = useRef<HTMLInputElement>(null);
-  const videoObjectUrlRef = useRef<string | null>(null);
   const countdownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const liveRequestControllerRef = useRef<AbortController | null>(null);
@@ -164,9 +155,6 @@ export function PrayerCamera({
   const [permission, requestPermission] = useCameraPermissions();
   const [isActive, setIsActive] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
-  const [videoUri, setVideoUri] = useState<string | null>(null);
-  const [isVideoReady, setIsVideoReady] = useState(false);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
   const [facing, setFacing] = useState<CameraType>('front');
   const [error, setError] = useState<string | null>(null);
   const [earlySittingNow, setEarlySittingNow] = useState(0);
@@ -177,14 +165,12 @@ export function PrayerCamera({
   const [firstTashahhudReminderSessionId, setFirstTashahhudReminderSessionId] = useState<number | null>(null);
   const isPrayerStarted = prayerStartedSessionId === sessionId;
   const showFirstTashahhudReminder = firstTashahhudReminderSessionId === sessionId;
-  const isVideoMode = Platform.OS === 'web' && videoUri !== null;
-  const isSourceReady = isVideoMode ? isVideoReady : isCameraReady;
   const graceStartedAt = preSujudTransitionStartedAt ?? postSujudTransitionStartedAt;
   const graceNoticePrefix = 'تم اكتشاف حركة انتقال';
   const countdown = countdownState?.sessionId === sessionId ? countdownState.value : null;
   const canStartPrayer =
     engineStatus === 'connected' &&
-    isSourceReady &&
+    isCameraReady &&
     !isPrayerStarted &&
     countdown === null &&
     pendingNewSessionStartId === null;
@@ -258,23 +244,7 @@ export function PrayerCamera({
     }
   }, []);
 
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  const clearVideoTestMode = useCallback(() => {
-    stopLiveLoop();
-    videoRef.current?.pause();
-    setIsVideoPlaying(false);
-    setIsVideoReady(false);
-
-    if (Platform.OS === 'web' && videoObjectUrlRef.current) {
-      URL.revokeObjectURL(videoObjectUrlRef.current);
-      videoObjectUrlRef.current = null;
-    }
-
-    setVideoUri(null);
-  }, [stopLiveLoop]);
-
   const beginCamera = useCallback(async () => {
-    clearVideoTestMode();
     setError(null);
     void onCheckEngine();
     if (!permission) {
@@ -297,7 +267,7 @@ export function PrayerCamera({
     cameraActiveRef.current = true;
     setIsActive(true);
     onStatusChange('STARTING');
-  }, [clearVideoTestMode, onCheckEngine, onStatusChange, permission, requestPermission]);
+  }, [onCheckEngine, onStatusChange, permission, requestPermission]);
 
   const stopCamera = useCallback(() => {
     clearCountdownTimer();
@@ -314,66 +284,6 @@ export function PrayerCamera({
   const toggleFacing = useCallback(() => {
     setFacing((current) => (current === 'front' ? 'back' : 'front'));
   }, []);
-
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  const handleVideoFileChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    event.target.value = '';
-    if (!file || Platform.OS !== 'web') return;
-
-    const extension = file.name.toLowerCase().split('.').pop();
-    if (extension !== 'mp4' && extension !== 'mov') {
-      setError('اختر ملف فيديو بصيغة MP4 أو MOV.');
-      return;
-    }
-
-    clearCountdownTimer();
-    clearVideoTestMode();
-    cameraActiveRef.current = false;
-    cameraReadyRef.current = false;
-    setIsActive(false);
-    setIsCameraReady(false);
-    setError(null);
-    setFinishedPrayer(false);
-    setPrayerStartedSessionId(null);
-    setFirstTashahhudReminderSessionId(null);
-    onStatusChange('OFF');
-
-    const objectUrl = URL.createObjectURL(file);
-    videoObjectUrlRef.current = objectUrl;
-    setVideoUri(objectUrl);
-    setPendingNewSessionStartId(sessionId + 1);
-    onStartNewPrayerSession();
-    void onCheckEngine();
-  }, [
-    clearCountdownTimer,
-    clearVideoTestMode,
-    onCheckEngine,
-    onStartNewPrayerSession,
-    onStatusChange,
-    sessionId,
-  ]);
-
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  const handleVideoPause = useCallback(() => {
-    setIsVideoPlaying(false);
-    stopLiveLoop();
-  }, [stopLiveLoop]);
-
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  const handleVideoPlay = useCallback(() => {
-    setIsVideoPlaying(true);
-  }, []);
-
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  useEffect(
-    () => () => {
-      if (Platform.OS === 'web' && videoObjectUrlRef.current) {
-        URL.revokeObjectURL(videoObjectUrlRef.current);
-      }
-    },
-    [],
-  );
 
   useEffect(() => {
     if (countdown === null) return;
@@ -440,20 +350,11 @@ export function PrayerCamera({
     return () => clearTimeout(resetSession);
   }, [clearCountdownTimer, engineStatus, setCountdown, stopLiveLoop]);
 
-  // TEMP VIDEO TEST MODE - REMOVE AFTER TESTING
-  useEffect(() => {
-    if (!isVideoMode || !isVideoReady || !isPrayerStarted || countdown !== null) return;
-
-    void videoRef.current?.play().catch(() => {
-      // Browser playback policies may require the tester to press play.
-    });
-  }, [countdown, isPrayerStarted, isVideoMode, isVideoReady]);
-
   useEffect(() => {
     if (
       engineStatus !== 'connected' ||
-      !isSourceReady ||
-      (isVideoMode ? !isVideoPlaying : !isActive) ||
+      !isCameraReady ||
+      !isActive ||
       !isPrayerStarted ||
       countdown !== null
     ) {
@@ -478,9 +379,9 @@ export function PrayerCamera({
         cancelled ||
         loopSessionId !== sessionIdRef.current ||
         !liveLoopActiveRef.current ||
-        (isVideoMode
-          ? !videoRef.current || videoRef.current.paused || videoRef.current.ended || videoRef.current.readyState < 2
-          : !cameraRef.current || !cameraActiveRef.current || !cameraReadyRef.current)
+        !cameraRef.current ||
+        !cameraActiveRef.current ||
+        !cameraReadyRef.current
       ) {
         return;
       }
@@ -503,42 +404,36 @@ export function PrayerCamera({
         logLive('capture');
         let uploadFrame: string | Blob;
 
-        if (isVideoMode) {
-          const video = videoRef.current;
-          if (!video) return;
-          uploadFrame = await prepareWebVideoFrame(video);
-        } else {
-          const picture = await cameraRef.current!.takePictureAsync({
-            quality: 0.3,
-            shutterSound: false,
-            base64: false,
-            exif: false,
+        const picture = await cameraRef.current!.takePictureAsync({
+          quality: 0.3,
+          shutterSound: false,
+          base64: false,
+          exif: false,
+        });
+
+        if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
+          return;
+        }
+
+        uploadFrame = picture.uri;
+
+        if (Platform.OS === 'web') {
+          try {
+            uploadFrame = await prepareWebFrame(picture.uri);
+          } catch {
+            logLive('web frame preparation failed; using fallback');
+          }
+        }
+
+        if (typeof uploadFrame === 'string' && picture.width > MAX_UPLOAD_WIDTH) {
+          const image = ImageManipulator.manipulate(picture.uri);
+          image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
+          const renderedImage = await image.renderAsync();
+          const resizedImage = await renderedImage.saveAsync({
+            format: SaveFormat.JPEG,
+            compress: 0.3,
           });
-
-          if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
-            return;
-          }
-
-          uploadFrame = picture.uri;
-
-          if (Platform.OS === 'web') {
-            try {
-              uploadFrame = await prepareWebFrame(picture.uri);
-            } catch {
-              logLive('web frame preparation failed; using fallback');
-            }
-          }
-
-          if (typeof uploadFrame === 'string' && picture.width > MAX_UPLOAD_WIDTH) {
-            const image = ImageManipulator.manipulate(picture.uri);
-            image.resize({ width: MAX_UPLOAD_WIDTH, height: null });
-            const renderedImage = await image.renderAsync();
-            const resizedImage = await renderedImage.saveAsync({
-              format: SaveFormat.JPEG,
-              compress: 0.3,
-            });
-            uploadFrame = resizedImage.uri;
-          }
+          uploadFrame = resizedImage.uri;
         }
 
         if (cancelled || loopSessionId !== sessionIdRef.current || !liveLoopActiveRef.current) {
@@ -594,9 +489,7 @@ export function PrayerCamera({
     engineStatus,
     isActive,
     isPrayerStarted,
-    isSourceReady,
-    isVideoMode,
-    isVideoPlaying,
+    isCameraReady,
     sessionId,
     stopLiveLoop,
   ]);
@@ -632,38 +525,10 @@ export function PrayerCamera({
           style={[
             styles.cameraClip,
             { borderColor: theme.line },
-            !isActive && !isVideoMode && !isDarkMode && { backgroundColor: theme.panelRaised },
+            !isActive && !isDarkMode && { backgroundColor: theme.panelRaised },
           ]}
         >
-          {isVideoMode ? (
-            <>
-              {/* TEMP VIDEO TEST MODE - REMOVE AFTER TESTING */}
-              <video
-                ref={videoRef}
-                controls
-                playsInline
-                preload="metadata"
-                src={videoUri}
-                onLoadedMetadata={() => setIsVideoReady(true)}
-                onPlay={handleVideoPlay}
-                onPause={handleVideoPause}
-                onEnded={handleVideoPause}
-                onError={() => setError('تعذر تشغيل ملف الفيديو المحدد.')}
-                style={{ width: '100%', height: '100%', backgroundColor: '#000000', objectFit: 'contain' }}
-              />
-              {countdown !== null ? (
-                <View pointerEvents="none" style={styles.countdownOverlay}>
-                  <Text style={styles.countdownText}>{countdown}</Text>
-                </View>
-              ) : null}
-              {engineStatus !== 'error' ? (
-                <View pointerEvents="none" style={styles.statusPill}>
-                  <View style={[styles.engineDot, { backgroundColor: engine.color }]} />
-                  <Text style={styles.statusText}>{engine.text}</Text>
-                </View>
-              ) : null}
-            </>
-          ) : isActive ? (
+          {isActive ? (
             <>
               <CameraView
                 ref={cameraRef}
@@ -770,31 +635,7 @@ export function PrayerCamera({
           </Text>
       </Pressable>
 
-      {Platform.OS === 'web' ? (
-        <>
-          {/* TEMP VIDEO TEST MODE - REMOVE AFTER TESTING */}
-          <input
-            ref={videoInputRef}
-            accept="video/mp4,video/quicktime,.mp4,.mov"
-            onChange={handleVideoFileChange}
-            style={{ display: 'none' }}
-            type="file"
-          />
-          <Pressable
-            accessibilityRole="button"
-            onPress={() => videoInputRef.current?.click()}
-            style={({ pressed }) => [
-              styles.videoUploadButton,
-              { borderColor: theme.brassDim, backgroundColor: theme.panel },
-              pressed && styles.pressed,
-            ]}
-          >
-            <Text style={[styles.testButtonText, { color: theme.brassSoft }]}>رفع فيديو للاختبار</Text>
-          </Pressable>
-        </>
-      ) : null}
-
-      {isActive || isVideoMode ? (
+      {isActive ? (
         <>
           <Pressable
             accessibilityRole="button"
@@ -934,14 +775,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.brassDim,
     backgroundColor: colors.panel,
-  },
-  videoUploadButton: {
-    marginTop: 10,
-    minHeight: 42,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
   },
   testButtonText: { color: colors.brassSoft, fontSize: 14, fontWeight: '700', writingDirection: 'rtl' },
   pressed: { opacity: 0.82, transform: [{ scale: 0.985 }] },

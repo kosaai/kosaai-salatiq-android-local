@@ -107,6 +107,7 @@ export function PrayerOverviewCard({ prayer, state, cameraStatus, isDarkMode }: 
           <Text style={[styles.statusText, { color: theme.ivory }]}>{camera.title}</Text>
         </View>
         <Text style={[styles.statusDetail, { color: theme.muted }]}>{camera.detail}</Text>
+        <Text style={[styles.statusPrivacy, { color: theme.muted }]}>تتم المعالجة بأمان على جهازك</Text>
       </View>
     </LinearGradient>
   );
@@ -211,5 +212,12 @@ const styles = StyleSheet.create({
     textAlign: 'left',
     writingDirection: 'rtl',
     marginTop: 7,
+  },
+  statusPrivacy: {
+    color: colors.muted,
+    fontSize: 9,
+    textAlign: 'left',
+    writingDirection: 'rtl',
+    marginTop: 4,
   },
 });

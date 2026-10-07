@@ -54,7 +54,6 @@ function getStageMessage(
 
   if (engineStatus === 'disconnected') return 'المحرك غير متصل';
   if (engineStatus === 'connecting') return `جاري الاتصال${'.'.repeat(connectingDots)}`;
-  if (engineStatus === 'error') return 'لا يتوفر الإنترنت';
 
   return 'بانتظار ظهور المصلي';
 }
@@ -137,18 +136,12 @@ export function PrayerStageCard({
     <View style={[styles.card, { borderColor: theme.line, backgroundColor: theme.panel }]}>
         <View style={styles.currentRow}>
           <View style={styles.currentStage}>
-            {engineStatus !== 'error' ? (
-              <View style={styles.iconSlot}>
-                {showPoseIcon ? <PrayerPoseIcon pose={displayedPose} stage={displayedPrayerStage} size={56} /> : <View style={styles.iconPlaceholder} />}
-              </View>
-            ) : null}
-            <View style={[styles.stageCopy, engineStatus === 'error' && styles.connectionErrorCopy]}>
+            <View style={styles.iconSlot}>
+              {showPoseIcon ? <PrayerPoseIcon pose={displayedPose} stage={displayedPrayerStage} size={56} /> : <View style={styles.iconPlaceholder} />}
+            </View>
+            <View style={styles.stageCopy}>
             <Text
-              style={[
-                styles.currentText,
-                { color: engineStatus === 'error' ? theme.danger : theme.ivory },
-                engineStatus === 'error' && styles.connectionErrorText,
-              ]}
+              style={[styles.currentText, { color: theme.ivory }]}
             >
               {getStageMessage(
                 engineStatus,
@@ -250,9 +243,7 @@ const styles = StyleSheet.create({
   iconSlot: { width: 56, height: 56, alignItems: 'center', justifyContent: 'center' },
   iconPlaceholder: { width: 56, height: 56 },
   stageCopy: { flex: 1, minWidth: 0 },
-  connectionErrorCopy: { alignItems: 'center' },
   currentText: { color: colors.ivory, fontSize: 15, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
-  connectionErrorText: { textAlign: 'center' },
   confidence: { minWidth: 48, alignItems: 'flex-start', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.line, paddingRight: 12 },
   confidenceLabel: { color: colors.muted, fontSize: 10.5, writingDirection: 'rtl' },
   confidenceValue: { color: colors.brassSoft, fontSize: 16, fontWeight: '700', marginTop: 3, fontVariant: ['tabular-nums'] },
