@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   advancePrayerSequence,
+  confirmFinalTashahhudTimeout,
   confirmPostSujudTransitionTimeout,
   confirmPreSujudTransitionTimeout,
   createInitialPrayerState,
@@ -45,6 +46,21 @@ export function usePrayerSession() {
 
     return () => clearTimeout(timeout);
   }, [prayerState.postSujudTransitionStartedAt]);
+
+  useEffect(() => {
+    const startedAt = prayerState.finalTashahhudConfirmationStartedAt;
+    if (!startedAt) return;
+
+    const timeout = setTimeout(() => {
+      setPrayerState((current) =>
+        current.finalTashahhudConfirmationStartedAt === startedAt
+          ? confirmFinalTashahhudTimeout(current)
+          : current,
+      );
+    }, Math.max(0, startedAt + 10_000 - Date.now()));
+
+    return () => clearTimeout(timeout);
+  }, [prayerState.finalTashahhudConfirmationStartedAt]);
 
   const selectPrayer = useCallback((prayer: PrayerType) => {
     if (prayer === selectedPrayer) return;

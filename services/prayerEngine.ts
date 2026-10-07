@@ -39,6 +39,8 @@ export function createInitialPrayerState(prayer: PrayerType = 'FAJR'): PrayerSta
     firstTashahhudStartedAt: null,
     preSujudTransitionStartedAt: null,
     postSujudTransitionStartedAt: null,
+    finalTashahhudConfirmationStartedAt: null,
+    finalTashahhudConfirmationPose: null,
     prayerStarted: false,
   };
 }
@@ -472,6 +474,45 @@ function getValidatorSequence(prayer: PrayerType) {
   return null;
 }
 
+/** True only while the final tashahhud is the active, already validated stage. */
+function isAtFinalTashahhud(state: PrayerState) {
+  return state.prayerStage === 'TASHAHHUD' && state.sequence.awaitingFinalTashahhud;
+}
+
+function getFinalTashahhudStage(prayer: PrayerType) {
+  return getValidatorSequence(prayer)?.find((stage) => stage.tashahhud === 'final') ?? null;
+}
+
+/**
+ * Fires only after the same wrong pose stayed stable for the full confirmation
+ * window at the final tashahhud. One alert per event through activeSahwEvent.
+ */
+export function confirmFinalTashahhudTimeout(state: PrayerState): PrayerState {
+  const validatorSequence = getValidatorSequence(state.prayerType);
+  const finalTashahhudStage = getFinalTashahhudStage(state.prayerType);
+
+  if (!state.finalTashahhudConfirmationStartedAt) return state;
+
+  if (!isAtFinalTashahhud(state) || !validatorSequence || !finalTashahhudStage) {
+    return {
+      ...state,
+      finalTashahhudConfirmationStartedAt: null,
+      finalTashahhudConfirmationPose: null,
+    };
+  }
+
+  return {
+    ...startActiveSahwEvent(
+      state,
+      'MISSING_STAGE',
+      finalTashahhudStage,
+      getActiveSahwRecoveryStageIds(validatorSequence, finalTashahhudStage),
+    ),
+    finalTashahhudConfirmationStartedAt: null,
+    finalTashahhudConfirmationPose: null,
+  };
+}
+
 function startActiveSahwEvent(
   state: PrayerState,
   alertType: SahwAlertType,
@@ -628,6 +669,35 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
 
   if (state.activeSahwEvent) {
     return resolveActiveSahwEvent(state, validatorSequence, pose);
+  }
+
+  if (isAtFinalTashahhud(state)) {
+    if (pose !== 'SITTING') {
+      // Wrong pose at the final tashahhud: freeze the display on the tashahhud,
+      // change no stage, show no pose, fire no alert until the window elapses.
+      const isSamePendingPose = state.finalTashahhudConfirmationPose === pose;
+      return {
+        ...state,
+        currentPose: 'SITTING',
+        finalTashahhudConfirmationStartedAt:
+          isSamePendingPose && state.finalTashahhudConfirmationStartedAt !== null
+            ? state.finalTashahhudConfirmationStartedAt
+            : Date.now(),
+        finalTashahhudConfirmationPose: pose,
+      };
+    }
+
+    if (state.finalTashahhudConfirmationStartedAt !== null) {
+      // Correct pose returned: cancel the confirmation completely, then continue normally.
+      return advancePrayerSequence(
+        {
+          ...state,
+          finalTashahhudConfirmationStartedAt: null,
+          finalTashahhudConfirmationPose: null,
+        },
+        pose,
+      );
+    }
   }
 
   const expected = validatorSequence[state.expectedIndex];

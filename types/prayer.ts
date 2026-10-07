@@ -84,6 +84,8 @@ export interface PrayerState {
   firstTashahhudStartedAt: number | null;
   preSujudTransitionStartedAt: number | null;
   postSujudTransitionStartedAt: number | null;
+  finalTashahhudConfirmationStartedAt: number | null;
+  finalTashahhudConfirmationPose: PrayerPose | null;
   prayerStarted: boolean;
 }
 
