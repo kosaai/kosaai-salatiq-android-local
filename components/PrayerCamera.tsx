@@ -1,5 +1,4 @@
 import { CameraView, useCameraPermissions, type CameraType } from 'expo-camera';
-import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
@@ -14,6 +13,7 @@ import {
 import { colors, lightColors } from '../constants/theme';
 import { predictImage, type PredictionPose } from '../services/predictionApi';
 import type { CameraStatus, EngineStatus } from '../types/prayer';
+import { FontAwesomeIcon } from './FontAwesomeIcon';
 
 type PrayerCameraProps = {
   onStatusChange: (status: CameraStatus) => void;
@@ -711,8 +711,8 @@ export function PrayerCamera({
               {permission === null ? (
                 <ActivityIndicator color={colors.brassSoft} />
               ) : (
-                <MaterialCommunityIcons
-                  name="camera-off-outline"
+                <FontAwesomeIcon
+                  name="camera"
                   size={48}
                   color={theme.brassSoft}
                 />

@@ -1,5 +1,4 @@
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
-import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
@@ -12,6 +11,7 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { FontAwesomeIcon } from '../components/FontAwesomeIcon';
 import { PrayerCamera } from '../components/PrayerCamera';
 import { PrayerOverviewCard } from '../components/PrayerOverviewCard';
 import { PrayerStageCard } from '../components/PrayerStageCard';
@@ -92,7 +92,7 @@ export function HomeScreen() {
               hitSlop={10}
               style={styles.themeButton}
             >
-              <Ionicons name={isDarkMode ? 'moon-outline' : 'sunny-outline'} size={23} color={theme.brassSoft} />
+              <FontAwesomeIcon name={isDarkMode ? 'moon-o' : 'sun-o'} size={23} color={theme.brassSoft} />
             </Pressable>
           </View>
           <View style={[styles.selector, { backgroundColor: theme.panel, borderColor: theme.line }]}>
