@@ -1,0 +1,10 @@
+# Expo Router ships the app as a single-page bundle, so a direct visit or a
+# page refresh on a secondary route must fall back to index.html and let the
+# router render the matching screen. Only these routes are rewritten; every
+# other path (assets, fonts, images) keeps being served as a real file.
+/about /index.html 200
+/more /index.html 200
+/privacy /index.html 200
+/usage /index.html 200
+/disclaimer /index.html 200
+/licenses /index.html 200

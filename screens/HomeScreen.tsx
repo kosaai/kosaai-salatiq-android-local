@@ -1,5 +1,6 @@
 import { setAudioModeAsync, useAudioPlayer } from 'expo-audio';
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
@@ -18,6 +19,7 @@ import { PrayerStageCard } from '../components/PrayerStageCard';
 import { prayerConfig, prayerTypes } from '../constants/prayers';
 import { colors, lightColors } from '../constants/theme';
 import { useEngineConnection } from '../hooks/useEngineConnection';
+import { themeParam } from '../hooks/usePageTheme';
 import { usePrayerSession } from '../hooks/usePrayerSession';
 
 export function HomeScreen() {
@@ -84,15 +86,26 @@ export function HomeScreen() {
               resizeMode="contain"
               style={styles.brandLogo}
             />
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={isDarkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
-              onPress={() => setIsDarkMode((current) => !current)}
-              hitSlop={10}
-              style={styles.themeButton}
-            >
-              <FontAwesomeIcon name={isDarkMode ? 'moon' : 'sun'} size={23} color={theme.brassSoft} />
-            </Pressable>
+            <View style={styles.headerActions}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={isDarkMode ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'}
+                onPress={() => setIsDarkMode((current) => !current)}
+                hitSlop={10}
+                style={styles.themeButton}
+              >
+                <FontAwesomeIcon name={isDarkMode ? 'moon' : 'sun'} size={23} color={theme.brassSoft} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="المزيد"
+                onPress={() => router.push({ pathname: '/more', params: themeParam(isDarkMode) })}
+                hitSlop={10}
+                style={styles.menuButton}
+              >
+                <FontAwesomeIcon name="bars" size={22} color={theme.brassSoft} />
+              </Pressable>
+            </View>
           </View>
           <View style={[styles.selector, { backgroundColor: theme.panel, borderColor: theme.line }]}>
             <Text style={[styles.selectorTitle, { color: theme.muted }]}>اختر الصلاة</Text>
@@ -157,7 +170,9 @@ const styles = StyleSheet.create({
   content: { width: '100%', maxWidth: 460, alignSelf: 'center', paddingTop: 14, paddingBottom: 48 },
   themeHeader: { marginBottom: 10, minHeight: 54, paddingHorizontal: 4, flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'space-between' },
   brandLogo: { width: 108, height: 54 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   themeButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
+  menuButton: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center' },
   selector: { marginBottom: 22, padding: 16, borderRadius: 18, borderWidth: 1 },
   selectorTitle: { color: colors.muted, fontSize: 12, textAlign: 'center', writingDirection: 'rtl', marginBottom: 12 },
   prayerGrid: { flexDirection: 'row-reverse', justifyContent: 'space-between', gap: 7 },
