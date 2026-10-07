@@ -25,7 +25,6 @@ export function HomeScreen() {
   const {
     selectedPrayer,
     prayerState,
-    cameraStatus,
     sessionId,
     selectPrayer,
     startNewPrayerSession,
@@ -125,7 +124,6 @@ export function HomeScreen() {
           <PrayerOverviewCard
             prayer={selectedPrayer}
             state={prayerState}
-            cameraStatus={cameraStatus}
             isDarkMode={isDarkMode}
           />
           <PrayerCamera

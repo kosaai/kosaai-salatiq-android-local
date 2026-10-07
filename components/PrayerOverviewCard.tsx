@@ -2,69 +2,20 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors, lightColors } from '../constants/theme';
 import { prayerConfig } from '../constants/prayers';
-import type { CameraStatus, PrayerState, PrayerType } from '../types/prayer';
+import type { PrayerState, PrayerType } from '../types/prayer';
+import { FontAwesomeIcon } from './FontAwesomeIcon';
 
 type PrayerOverviewCardProps = {
   prayer: PrayerType;
   state: PrayerState;
-  cameraStatus: CameraStatus;
   isDarkMode: boolean;
 };
 
-type CameraPresentation = {
-  title: string;
-  detail: string;
-  color: string;
-};
-
-function getCameraPresentation(status: CameraStatus): CameraPresentation {
-  switch (status) {
-    case 'REQUESTING_PERMISSION':
-      return {
-        title: 'الحالة: بانتظار الإذن',
-        detail: 'جاري طلب إذن الكاميرا',
-        color: colors.brassSoft,
-      };
-    case 'STARTING':
-      return {
-        title: 'الحالة: جاري التشغيل',
-        detail: 'جاري تهيئة الكاميرا',
-        color: colors.brassSoft,
-      };
-    case 'PERMISSION_DENIED':
-      return {
-        title: 'الحالة: لا يوجد إذن للكاميرا',
-        detail: 'اسمح بالوصول من إعدادات الجهاز',
-        color: colors.danger,
-      };
-    case 'READY':
-      return {
-        title: 'الحالة: تعمل',
-        detail: 'الكاميرا تعمل',
-        color: colors.sage,
-      };
-    case 'ERROR':
-      return {
-        title: 'الحالة: تعذر التشغيل',
-        detail: 'تعذر تشغيل الكاميرا',
-        color: colors.danger,
-      };
-    case 'OFF':
-    default:
-      return {
-        title: 'الحالة: متوقفة',
-        detail: 'الكاميرا متوقفة',
-        color: colors.muted,
-      };
-  }
-}
-
-export function PrayerOverviewCard({ prayer, state, cameraStatus, isDarkMode }: PrayerOverviewCardProps) {
+export function PrayerOverviewCard({ prayer, state, isDarkMode }: PrayerOverviewCardProps) {
   const theme = isDarkMode ? colors : lightColors;
   const prayerName = prayerConfig[prayer].arabicName;
   const totalRakahs = state.totalRakahs;
   const currentRakah = Math.min(Math.max(state.currentRakah, 1), totalRakahs);
-  const camera = getCameraPresentation(cameraStatus);
 
   return (
     <LinearGradient
@@ -102,12 +53,12 @@ export function PrayerOverviewCard({ prayer, state, cameraStatus, isDarkMode }: 
       <View style={[styles.divider, { backgroundColor: theme.line }]} />
 
       <View style={[styles.column, styles.statusColumn]}>
-        <View style={styles.statusLine}>
-          <View style={[styles.statusDot, { backgroundColor: camera.color }]} />
-          <Text style={[styles.statusText, { color: theme.ivory }]}>{camera.title}</Text>
+        <View style={styles.privacyLine}>
+          <FontAwesomeIcon name="lock" size={15} color={theme.brassSoft} />
+          <Text style={[styles.statusPrivacy, { color: theme.muted }]}>
+            تتم المعالجة بأمان على جهازك
+          </Text>
         </View>
-        <Text style={[styles.statusDetail, { color: theme.muted }]}>{camera.detail}</Text>
-        <Text style={[styles.statusPrivacy, { color: theme.muted }]}>تتم المعالجة بأمان على جهازك</Text>
       </View>
     </LinearGradient>
   );
@@ -189,35 +140,16 @@ const styles = StyleSheet.create({
   statusColumn: {
     alignItems: 'flex-start',
   },
-  statusLine: {
+  privacyLine: {
     flexDirection: 'row-reverse',
     alignItems: 'center',
-    gap: 5,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-  statusText: {
-    color: colors.ivory,
-    fontSize: 12,
-    fontWeight: '700',
-    textAlign: 'left',
-    writingDirection: 'rtl',
-  },
-  statusDetail: {
-    color: colors.muted,
-    fontSize: 10.5,
-    textAlign: 'left',
-    writingDirection: 'rtl',
-    marginTop: 7,
+    gap: 6,
   },
   statusPrivacy: {
     color: colors.muted,
-    fontSize: 9,
-    textAlign: 'left',
+    fontSize: 11.5,
+    flexShrink: 1,
+    textAlign: 'right',
     writingDirection: 'rtl',
-    marginTop: 4,
   },
 });
