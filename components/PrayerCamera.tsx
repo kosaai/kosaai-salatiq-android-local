@@ -712,7 +712,7 @@ export function PrayerCamera({
                 <ActivityIndicator color={colors.brassSoft} />
               ) : (
                 <FontAwesomeIcon
-                  name="camera"
+                  name="video-slash"
                   size={48}
                   color={theme.brassSoft}
                 />

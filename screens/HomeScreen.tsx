@@ -92,7 +92,7 @@ export function HomeScreen() {
               hitSlop={10}
               style={styles.themeButton}
             >
-              <FontAwesomeIcon name={isDarkMode ? 'moon-o' : 'sun-o'} size={23} color={theme.brassSoft} />
+              <FontAwesomeIcon name={isDarkMode ? 'moon' : 'sun'} size={23} color={theme.brassSoft} />
             </Pressable>
           </View>
           <View style={[styles.selector, { backgroundColor: theme.panel, borderColor: theme.line }]}>
