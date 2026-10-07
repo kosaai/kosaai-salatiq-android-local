@@ -101,8 +101,22 @@ export function PageShell({
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   content: { width: '100%', maxWidth: 460, alignSelf: 'center', paddingTop: 14, paddingBottom: 48 },
-  header: { position: 'relative', overflow: 'hidden', paddingBottom: 2 },
-  watermark: { position: 'absolute', top: -70, left: 0, right: 0, height: 300, opacity: 0.07 },
+  // The header itself is a stacking context (position: relative + zIndex: 0),
+  // so the watermark's negative zIndex keeps it behind the title, back button
+  // and hero logo while still painting above the page gradient.
+  header: { position: 'relative', overflow: 'visible', paddingBottom: 2 },
+  watermark: {
+    position: 'absolute',
+    top: -80,
+    left: -50,
+    width: 470,
+    // react-native-web injects the asset's intrinsic width (1254px) inline,
+    // which would otherwise push the contained logo far outside the header.
+    maxWidth: 470,
+    height: 470,
+    opacity: 0.06,
+    zIndex: -1,
+  },
   backButton: {
     alignSelf: 'flex-end',
     width: 42,
