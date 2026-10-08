@@ -1,4 +1,4 @@
-"""Verify the actual APK/AAB contains the original, uncompressed model bytes."""
+"""Verify the actual APK/AAB contains the exact bundled model and Sahw sound."""
 import hashlib
 from pathlib import Path
 import sys
@@ -15,3 +15,7 @@ with zipfile.ZipFile(sys.argv[1]) as archive:
     if str(sys.argv[1]).endswith(".apk"):
         assert entry.compress_type == zipfile.ZIP_STORED, "APK model must be uncompressed for openFd/mmap"
     print(expected, len(data), "bytes; SHA256", hashlib.sha256(data).hexdigest())
+    sound_path = ("base/" if str(sys.argv[1]).endswith(".aab") else "") + "res/raw/subhan_allah.mp3"
+    sound = archive.read(sound_path)
+    assert sound == (root / "سبحان الله (1).mp3").read_bytes(), "Packaged Sahw sound differs from the supplied MP3"
+    print(sound_path, len(sound), "bytes; SHA256", hashlib.sha256(sound).hexdigest())

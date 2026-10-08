@@ -42,20 +42,16 @@ For the equivalent Windows commands, use `gradlew.bat`.
 Expo Go does not contain this local native module. Use the Android Studio build
 or `npm run android`.
 
-## Launcher image: pending attachment file
+## Launcher image: exact `salatiq.png`
 
-The requested image is visible in the conversation, but its original PNG bytes
-were not exposed as a readable file in this execution environment. **The exact
-attached image has therefore NOT yet been installed as the launcher icon.** No
-repository logo or generated replacement was selected. The plugin removes
-template launcher artwork while this is pending; Android uses its system default
-application presentation until the supplied image is installed.
-
-Save that exact attachment as a PNG, then run:
+The launcher uses the user-supplied root **`salatiq.png`**, copied byte-for-byte
+to `assets/launcher/source.png`. Its SHA-256 is
+`9dbcfd9a0988089d0c8040c0db3100cc3adf522e7aab68d5454a5990cbe54fae`.
+Prepared assets and generated native resources are included. To regenerate:
 
 ```sh
 python -m pip install Pillow
-python scripts/prepare-launcher-icon.py /path/to/the/exact-attached-image.png
+python scripts/prepare-launcher-icon.py salatiq.png
 npm run android:prepare
 node scripts/verify-android-assets.mjs --require-icon
 ```
@@ -66,6 +62,94 @@ changing the aspect ratio. Expo generates `ic_launcher`, `ic_launcher_round`
 and `ic_launcher_foreground` in `mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}` plus the
 adaptive XML resources in `mipmap-anydpi-v26`. There is no substituted monochrome
 logo. The background color is sampled from the supplied image.
+
+`app.config.js` selects those prepared assets. The generated Android manifest
+references `@mipmap/ic_launcher` and `@mipmap/ic_launcher_round`; the adaptive
+XML selects the derived foreground and background `#FDFAEC`. The entire square
+source is fitted inside the adaptive safe circle, including its corners, so its
+artwork/aspect ratio is preserved across launcher masks. Check final size and
+appearance on the target launchers.
+
+## Android animated startup
+
+The startup sequence uses **only artwork derived from `salatiq.png`**:
+`assets/startup/mark.png` contains the Arabic calligraphic logo;
+`assets/startup/name.png` contains its original Latin **Salatiq** wordmark.
+The preparation script crops the inspected source and removes the pale paper
+backdrop with feathered transparency. Original RGB values, dark/gold artwork,
+lettering and aspect ratios are preserved; no replacement font/logo is used.
+Source hash and crop bounds are recorded in `assets/startup/provenance.json`.
+
+`expo-splash-screen ~57.0.9` configures the immediate native launch screen with
+the same centered mark (184 dp) and cream background `#FDFAEC`, in both Android
+light/dark modes. The official plugin generates the Android splash theme,
+density images and `MainActivity` registration. The native splash is held until
+both local images decode and the app content lays out, then handed off on the
+next animation frame to `components/StartupSplash.android.tsx`.
+
+The React Native overlay runs a **1,280 ms**, native-driven sequence:
+
+1. **140 ms:** centered logo only; wordmark opacity is zero.
+2. **640 ms:** logo rises about 22 dp while the original wordmark fades in and
+   moves **down** by 12 dp; smooth cubic easing, no spring/bounce.
+3. **240 ms:** centered final logo-above/name-below composition.
+4. **260 ms:** the entire overlay fades away onto the already-mounted app.
+
+Only transform/opacity are animated. Expo Router mounts once beneath the overlay;
+navigation, prayer/session/camera state and Sahw playback are not reset at the
+transition. The overlay blocks interaction/accessibility with underlying content
+until it disappears, and stops/cancels its animation on unmount. System reduced
+motion uses the final composition with a short 180 ms fade instead of movement.
+The non-Android component renders children normally.
+
+To regenerate the source-derived branding and native resources:
+
+```sh
+python scripts/prepare-startup-branding.py
+npm run android:prepare
+```
+
+Validate the native-to-React handoff in an installed **release build**, including
+Android 12+, cold launches in light/dark mode, reduced motion, and activity
+recreation. Expo Go/development splash presentation is not representative of the
+release splash. Native startup/visual smoothness still requires device testing.
+
+## Bundled one-shot Sahw alert
+
+The exact root **`سبحان الله (1).mp3`** is copied, without transcoding, to
+`assets/audio/subhan_allah.mp3`. The configured `expo-asset` plugin embeds it in
+**`android/app/src/main/res/raw/subhan_allah.mp3`**, so the installed app contains
+the sound. All copies have SHA-256
+`d383c705a06644e1b6fb1cff5d0ee568e5a2ba404eee26f590b3b63d7e6fafb7`.
+The original MP3 is approximately 1.72 seconds long (44.1 kHz stereo).
+
+`hooks/useSahwAlertAudio.ts` uses the already-installed **`expo-audio ~57.0.5`**:
+`useAudioPlayer`, `useAudioPlayerStatus`, `seekTo(0)` and `play()`. Android reads
+only `file:///android_res/raw/subhan_allah.mp3`, even in a native debug build;
+there is no sound download or HTTP fallback. The player loads on screen mount,
+is reused, has looping disabled, and is automatically released on unmount.
+
+The read-only tracker in `services/sahwAudio.ts` claims each new event before
+asynchronous playback. Since the existing engine has no event ID, a WeakSet
+tracks the stable `activeSahwEvent` object identity within a session. Append-only
+`sahwAlerts` history also captures events created and recovered in the same
+engine update. A simultaneous activation/history append counts once. Repeated
+renders/results and recovery add no sound; a genuinely new activation of the
+same type/stage still counts once. Pending sounds are serialized, and a new
+session/unmount invalidates pending seeks. Audio never modifies engine state.
+
+Run the engine and one-shot regression checks:
+
+```sh
+npx tsc services/prayerEngine.ts services/sahwAudio.ts constants/fajrSequence.ts constants/fourRakahSequence.ts constants/maghribSequence.ts --module commonjs --target ES2020 --outDir validation-output/prayer --skipLibCheck --ignoreConfig
+node scripts/test-prayer-regression.cjs validation-output/prayer
+node scripts/test-sahw-audio.cjs validation-output/prayer
+```
+
+The audio test checks real engine identities/events and runs the actual hook
+with simulated effects/player. Audible playback, volume, timing and native
+lifecycle still require a physical device. The APK verifier below checks the
+exact bundled MP3 as well as the model.
 
 ## Model and native pipeline
 

@@ -1,6 +1,6 @@
-"""Prepare launcher assets ONLY from the user-supplied conversation image.
+"""Prepare launcher assets ONLY from the exact user-supplied PNG.
 
-Usage: python scripts/prepare-launcher-icon.py /path/to/the/attached-image.png
+Usage: python scripts/prepare-launcher-icon.py salatiq.png
 Requires Pillow. Afterward run npm run android:prepare.
 """
 import hashlib
@@ -35,7 +35,7 @@ if source != destination / "source.png":
 icon.save(destination / "icon.png")
 foreground.save(destination / "adaptive-foreground.png")
 (destination / "provenance.json").write_text(json.dumps({
-    "source": "User-supplied conversation attachment; copied byte-for-byte",
+    "source": source.name,
     "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
     "size": list(image.size),
     "backgroundColor": "#" + "".join(f"{channel:02X}" for channel in background[:3]),

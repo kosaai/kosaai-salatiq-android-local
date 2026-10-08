@@ -16,8 +16,26 @@
           "barcodeScannerEnabled": false
         }
       ],
-      "expo-asset",
+      [
+        "expo-asset",
+        { "assets": ["./assets/audio/subhan_allah.mp3"] }
+      ],
       "expo-audio",
+      [
+        "expo-splash-screen",
+        {
+          "android": {
+            "backgroundColor": "#FDFAEC",
+            "image": "./assets/startup/mark.png",
+            "imageWidth": 184,
+            "resizeMode": "contain",
+            "dark": {
+              "backgroundColor": "#FDFAEC",
+              "image": "./assets/startup/mark.png"
+            }
+          }
+        }
+      ],
       "./plugins/withLocalClassification",
       "expo-font"
     ],

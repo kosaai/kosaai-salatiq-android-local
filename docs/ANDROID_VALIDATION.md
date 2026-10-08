@@ -184,21 +184,186 @@ not a Kotlin compilation error in the local module. No APK/AAB was produced, so
 the model's final APK/AAB ZIP entry could not yet be inspected. Its prebuild copy
 and actual Gradle-merged asset contents have both been verified.
 
-## Launcher image status
+## Exact launcher image and Sahw audio integration (2026-10-08)
 
-**NOT completed:** the original conversation attachment PNG is not accessible
-as a readable file in this environment. No alternative Salatiq logo or generated
-replacement was used. There are currently **no generated `ic_launcher*`
-resources**; template launcher artwork/references were removed by the plugin.
-`README.md` explains how to feed that exact PNG into the preparation script,
-then prebuild the density-specific/adaptive resources. The strict
-`--require-icon` verification fails until the actual source is supplied.
+The user subsequently supplied readable root files `salatiq.png` and
+`سبحان الله (1).mp3`. The launcher is now configured/generated from that exact
+PNG, with no substitute artwork. `assets/launcher/source.png` matches its bytes;
+`icon.png` and `adaptive-foreground.png` preserve its image/aspect ratio. The
+adaptive foreground fits all corners inside the safe circle. Provenance records
+SHA-256 `9dbcfd9a0988089d0c8040c0db3100cc3adf522e7aab68d5454a5990cbe54fae`
+and sampled background `#FDFAEC`.
+
+Generated launcher files are under `android/app/src/main/res/`:
+`mipmap-{mdpi,hdpi,xhdpi,xxhdpi,xxxhdpi}/ic_launcher*.webp`,
+`mipmap-anydpi-v26/{ic_launcher,ic_launcher_round}.xml`, and background/color
+resources. The manifest references the generated normal/round launchers. Expo
+config and adaptive XML references passed strict verification.
+
+The supplied MP3 is copied byte-for-byte to `assets/audio/subhan_allah.mp3` and,
+through the `expo-asset` config plugin, to native `res/raw/subhan_allah.mp3`.
+SHA-256 of all copies:
+`d383c705a06644e1b6fb1cff5d0ee568e5a2ba404eee26f590b3b63d7e6fafb7`.
+`ffprobe` confirmed MP3, 44.1 kHz stereo, 1.724082 seconds.
+
+The existing `expo-audio ~57.0.5` dependency is used; no dependency was added.
+`HomeScreen.tsx` calls `useSahwAlertAudio`, which loads on mount, reuses the player,
+observes `useAudioPlayerStatus`, seeks once and plays once for each claimed event.
+Android uses the explicit local URI `file:///android_res/raw/subhan_allah.mp3`;
+`downloadFirst` is false. No network is needed, including native debug playback.
+Looping is false. Expo releases the player on unmount, and a generation guard
+cancels asynchronous playback after session changes/unmount.
+
+`services/sahwAudio.ts` is a read-only event tracker. The unchanged engine keeps
+one stable active-event object until recovery, and creates a fresh object for
+every activation. A per-session WeakSet prevents duplicates while allowing a
+new event with the same type/stage. An append-only history cursor catches events
+already recovered inside the same update; simultaneous activation/history
+append is counted once. Playback/status updates cannot create new claims.
+
+Actual additional checks:
+
+```sh
+.android-tools/python/bin/python scripts/prepare-launcher-icon.py salatiq.png
+CI=1 npm run android:prepare
+node scripts/verify-android-assets.mjs --require-icon
+npx expo install --check
+npm run typecheck
+npm run lint
+npx tsc services/prayerEngine.ts services/sahwAudio.ts constants/fajrSequence.ts constants/fourRakahSequence.ts constants/maghribSequence.ts --module commonjs --target ES2020 --outDir validation-output/prayer --skipLibCheck --ignoreConfig
+node scripts/test-prayer-regression.cjs validation-output/prayer
+node scripts/test-sahw-audio.cjs validation-output/prayer
+npx expo export --platform android --platform web --output-dir validation-output/export --source-maps --no-bytecode --max-workers 2
+node scripts/verify-inference-bundles.mjs
+git diff --check
+```
+
+All listed checks passed. The five-prayer engine tests verify no early sound,
+one sound at final-tashahhud timeout, zero duplicates across 100 active-event
+updates, silent recovery, new activation with reused history, session reset,
+and immediately recovered events. The actual hook also passed simulated-player
+tests for preloading, 100 repeated renders, subsequent playback after Android's
+ended state, no automatic replay/loop, and session/unmount seek cancellation.
+These are host simulations, not audible/native device tests.
+
+Diff checks confirm no modifications to `prayerEngine`, `usePrayerSession`,
+`PrayerCamera`, the local classification module, or sequence constants/types.
+Android/Web exports and platform-specific inference resolution still pass.
+
+The APK/AAB ZIP verifier now checks the exact `res/raw/subhan_allah.mp3` bytes
+(prefixed `base/` in AABs) as well as the bundled uncompressed model.
+
+Native checks were executed again with the existing `.android-tools/` JDK/SDK
+and Gradle cache environment:
+
+```sh
+./android/gradlew -p android :local-classification:compileDebugKotlin :local-classification:testDebugUnitTest :app:mergeDebugAssets :app:mergeDebugResources :app:processDebugMainManifest --no-daemon --console=plain --max-workers=2
+./android/gradlew -p android :app:assembleDebug --no-daemon --console=plain --max-workers=2
+```
+
+The focused checks **passed in 3m 4s**, including **1 JUnit test with zero
+failures/errors**. The actual Gradle-packaged native MP3 at
+`android/app/build/intermediates/packaged_res/debug/packageDebugResources/raw/subhan_allah.mp3`
+matches the original bytes. All 15 packaged density-specific icon images match
+the generated source resources, and the merged manifest references both
+launchers and omits microphone permission. An independent Pillow comparison of
+normal/foreground density resources with resized exact-source derivatives
+passed (mean visible RGB error below 2/255 in every comparison).
+
+The full APK build **failed again after 49s** at `:app:processDebugResources`:
+the x86-64 AAPT2 executable cannot execute on this Linux ARM64 host. No APK/AAB
+was produced. Actual final-archive verification and audible/device testing
+therefore remain pending; successful resource merge is not an APK build.
+
+## Animated startup integration (2026-10-08)
+
+Added `components/StartupSplash.android.tsx` and its non-Android passthrough
+`components/StartupSplash.tsx`; `src/app/_layout.tsx` wraps the existing navigator
+without conditionally mounting/remounting it. Added
+`scripts/prepare-startup-branding.py` and `assets/startup/{mark.png,name.png,provenance.json}`.
+The source is the exact root `salatiq.png`, not another repository logo.
+The extracted mark is the original Arabic calligraphy; the name is the original
+Latin wordmark, not newly typeset text. Independent pixel comparisons confirm
+all RGB values match the corresponding source crops and all core dark/gold
+artwork remains fully opaque. Initial/final source-derived reference compositions
+were inspected on the host; they are not native device screenshots.
+
+Installed SDK-compatible `expo-splash-screen ~57.0.9` via `npx expo install` and
+updated `package.json`/`package-lock.json`. Installation succeeded; the CLI could
+not automatically edit dynamic app config, so the configured plugin was added
+explicitly to `app.json`. The official plugin generated native light/night splash
+images, cream colors, Android splash theme and `MainActivity` registration.
+`scripts/verify-android-assets.mjs` now checks source provenance, those resources,
+launch-theme references and registration alongside model/icon/audio assertions.
+
+The native splash shows the centered mark on `#FDFAEC` immediately and remains
+visible until the React overlay's images have decoded and underlying app has
+laid out. The next frame hides the native splash and begins the 1,280 ms sequence:
+140 ms logo-only; 640 ms simultaneous subtle upward logo movement and downward
+12 dp/fade-in wordmark; 240 ms settled composition; 260 ms overlay fade-out.
+Animation uses React Native `Animated` with the native driver, transform/opacity
+only, cubic easing, and no springs/loop. Reduced motion uses a 180 ms fade.
+Images are local bundled assets and require no font loading. Animations/queued
+frames are cancelled on unmount. App content remains mounted throughout.
+
+Commands executed for this task:
+
+```sh
+npx expo install expo-splash-screen
+.android-tools/python/bin/python scripts/prepare-startup-branding.py
+CI=1 npm run android:prepare
+npx expo install --check
+npm run typecheck
+npm run lint
+node scripts/test-prayer-regression.cjs validation-output/prayer
+node scripts/test-sahw-audio.cjs validation-output/prayer
+npx expo export --platform android --platform web --output-dir validation-output/export --source-maps --no-bytecode --max-workers 2
+node scripts/verify-inference-bundles.mjs
+git diff --check
+```
+
+Preparation/native-resource verification, Expo compatibility, Android/Web export,
+platform inference resolution, five-prayer regressions and one-shot Sahw tests
+passed. Typecheck/lint passed after adapting to the actual RN 0.86 APIs
+(`StyleSheet.absoluteFill`, `useAnimatedValue`). A later concurrent typecheck
+collided with the exporter replacing ignored output files; its generated-file
+errors are a tooling race, not source diagnostics, and checks were rerun after
+export completed.
+
+Final typecheck/lint, native autolinking verification and startup platform
+resolution checks all passed. The full source artwork fits Android's splash
+safe circle: maximum visible radius **94.15 dp**, below the **96 dp** limit at
+the selected 184 dp image width. All five generated day/night density pairs
+contain identical artwork.
+
+Native commands (using the existing ignored JDK/SDK/Gradle cache environment):
+
+```sh
+./android/gradlew -p android :app:mergeDebugAssets :app:mergeDebugResources :app:processDebugMainManifest :local-classification:compileDebugKotlin :local-classification:testDebugUnitTest --no-daemon --console=plain --max-workers=2
+./android/gradlew -p android :app:assembleDebug --no-daemon --console=plain --max-workers=2
+```
+
+Focused checks **passed in 3m 5s**; the JUnit result is **1 test, zero failures
+or errors**. All ten Gradle-packaged day/night splash images match their
+generated exact-source images. The merged activity uses
+`@style/Theme.App.SplashScreen`, microphone permission remains absent, and
+Gradle-packaged model/audio bytes still match their originals.
+
+The full APK attempt **failed after 48s** at `:app:processDebugResources` with
+the same x86-64 AAPT2 `cannot execute binary file` limitation on the ARM64 host.
+No APK/AAB was produced. A successful resource merge does not validate native
+screen rendering or replace release/device testing.
+
+No prayer logic, native TFLite implementation or Sahw playback code was changed
+by this startup task. No push was attempted. The release-native visual handoff,
+Android icon masking/position across OS versions, absence of flashes, timing and
+reduced-motion behavior still require an installed release app on a device.
 
 ## Remaining device/Android Studio checks
 
 1. Complete Gradle build/sync on a supported Android Studio host and inspect the
    real APK/AAB with `scripts/verify-apk-model.py`.
-2. Install the exact attached image and verify its launcher appearance/name.
+2. Verify the generated exact-image launcher appearance/name on target launchers.
 3. Install a release APK, disable Wi-Fi/mobile data, cold start and start prayer
    classification: the model must be immediately available with no API URL.
 4. Front/back camera permission, orientation, plane strides/colors, mirrored
@@ -209,7 +374,15 @@ then prebuild the density-specific/adaptive resources. The strict
 6. Physical timing of candidate confirmation, ITIDAL/sujud/rak'ah progression,
    sahw recovery and the final-tashahhud 10-second delayed alert.
 7. Sustained-session latency, temperature and memory on representative phones;
-   sampling is 4 Hz maximum but actual throughput depends on hardware.
+    sampling is 4 Hz maximum but actual throughput depends on hardware.
+8. With network disabled, verify audible one-shot Sahw playback for a new event,
+   no repeats while active, new same-stage event playback after recovery, session
+   switching and resource cleanup; verify latency/volume and background/resume.
+9. Test the release startup sequence on Android 12+ and an older supported OS:
+   cold launch in light/dark mode, no blank/white frame or native-to-React logo
+   jump, 1–1.5 s smooth upward-logo/downward-name motion, centered final layout,
+   fade into the app, reduced motion and activity recreation. Returning to the
+   root route/resuming an existing activity should not replay the intro.
 
 ## Git publication status
 
@@ -225,3 +398,6 @@ The push **did not succeed**: Git reported `could not read Username for
 'https://github.com': terminal prompts disabled`. No GitHub credentials are
 available in this environment, so publication needs authenticated Git access.
 The old Classification repository was not modified or pushed to.
+
+For the subsequent icon/audio task, the user requested **no push**. No push was
+attempted, and these additional changes are left uncommitted for review.

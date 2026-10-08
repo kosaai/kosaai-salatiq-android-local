@@ -1,0 +1,32 @@
+{
+  "source": "salatiq.png",
+  "sha256": "9dbcfd9a0988089d0c8040c0db3100cc3adf522e7aab68d5454a5990cbe54fae",
+  "backgroundColor": "#FDFAEC",
+  "processing": "Crop original artwork, retain RGB, remove pale background with feathered alpha; no redraw or replacement typeface",
+  "assets": {
+    "mark": {
+      "crop": [
+        126,
+        305,
+        1128,
+        791
+      ],
+      "size": [
+        1002,
+        486
+      ]
+    },
+    "name": {
+      "crop": [
+        328,
+        820,
+        924,
+        968
+      ],
+      "size": [
+        596,
+        148
+      ]
+    }
+  }
+}
