@@ -1,7 +1,15 @@
 import { PageShell } from '../components/PageShell';
+import { FontAwesomeIcon } from '../components/FontAwesomeIcon';
 import { colors, lightColors } from '../constants/theme';
 import { usePageTheme } from '../hooks/usePageTheme';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+
+// Use the device's Arabic-capable sans-serif fonts without a font download.
+const arabicFont = Platform.select({
+  web: '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif',
+  ios: 'System',
+  default: 'sans-serif',
+});
 
 const paragraphs = [
   'صلاتك هو تطبيق ذكي صُمم لمساعدة المصلّي على متابعة تسلسل صلاته والتنبيه عند حدوث خطأ محتمل بسبب الزيادة أو النقص في حركات الصلاة أو الركعات.',
@@ -21,6 +29,22 @@ export function AboutSalatiqScreen() {
       title="عن صلاتك"
       isDarkMode={isDarkMode}
       watermark
+      renderHeader={(onBack) => (
+        <View style={styles.headerRow}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="رجوع"
+            onPress={onBack}
+            style={({ pressed }) => [
+              styles.backButton,
+              { backgroundColor: theme.panel, borderColor: theme.line, opacity: pressed ? 0.8 : 1 },
+            ]}
+          >
+            <FontAwesomeIcon name="arrow-right" size={18} color={theme.brassSoft} />
+          </Pressable>
+          <Text accessibilityRole="header" style={[styles.title, { color: theme.ivory }]}>عن صلاتك</Text>
+        </View>
+      )}
       headerExtra={
         <Image
           accessibilityLabel="شعار صلاتك"
@@ -46,12 +70,16 @@ export function AboutSalatiqScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerRow: { flexDirection: 'row-reverse', alignItems: 'center', justifyContent: 'flex-start', gap: 12, width: '100%', minHeight: 48, zIndex: 1 },
+  backButton: { width: 44, height: 44, minWidth: 44, minHeight: 44, flexShrink: 0, borderRadius: 22, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  title: { fontFamily: arabicFont, fontSize: 28, lineHeight: 40, fontWeight: '600', textAlign: 'right', writingDirection: 'rtl', flexShrink: 1 },
   heroLogo: { width: 150, height: 150, alignSelf: 'center', marginTop: 10, marginBottom: 4 },
-  paragraphs: { gap: 16 },
+  paragraphs: { gap: 20 },
   paragraph: {
     color: colors.ivory,
-    fontSize: 14.5,
-    lineHeight: 27,
+    fontFamily: arabicFont,
+    fontSize: 16,
+    lineHeight: 30,
     textAlign: 'right',
     writingDirection: 'rtl',
   },

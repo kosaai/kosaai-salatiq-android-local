@@ -22,6 +22,7 @@ type PageShellProps = {
   headerExtra?: ReactNode;
   /** Very low opacity Salatiq logo used as a decorative header background. */
   watermark?: boolean;
+  renderHeader?: (onBack: () => void) => ReactNode;
 };
 
 /**
@@ -34,6 +35,7 @@ export function PageShell({
   children,
   headerExtra,
   watermark = false,
+  renderHeader,
 }: PageShellProps) {
   const theme = isDarkMode ? colors : lightColors;
   const { width } = useWindowDimensions();
@@ -58,36 +60,47 @@ export function PageShell({
           contentContainerStyle={[styles.content, { paddingHorizontal: horizontalPadding }]}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.header}>
+          <View style={[styles.header, watermark && styles.watermarkHeader]}>
             {watermark ? (
-              <Image
+              <View
+                pointerEvents="none"
                 accessibilityElementsHidden
-                importantForAccessibility="no"
-                source={
-                  isDarkMode
-                    ? require('../assets/branding/salatiq-logo-dark.png')
-                    : require('../assets/branding/salatiq-logo-light.png')
-                }
-                resizeMode="contain"
+                importantForAccessibility="no-hide-descendants"
                 style={styles.watermark}
-              />
+              >
+                <Image
+                  accessibilityElementsHidden
+                  importantForAccessibility="no"
+                  source={
+                    isDarkMode
+                      ? require('../assets/branding/salatiq-logo-dark.png')
+                      : require('../assets/branding/salatiq-logo-light.png')
+                  }
+                  resizeMode="contain"
+                  style={styles.watermarkImage}
+                />
+              </View>
             ) : null}
 
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="رجوع"
-              hitSlop={10}
-              onPress={handleBack}
-              style={({ pressed }) => [
-                styles.backButton,
-                { borderColor: theme.line, backgroundColor: theme.panel },
-                pressed && styles.pressed,
-              ]}
-            >
-              <FontAwesomeIcon name="arrow-right" size={17} color={theme.brassSoft} />
-            </Pressable>
+            {renderHeader ? renderHeader(handleBack) : (
+              <>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="رجوع"
+                  hitSlop={10}
+                  onPress={handleBack}
+                  style={({ pressed }) => [
+                    styles.backButton,
+                    { borderColor: theme.line, backgroundColor: theme.panel },
+                    pressed && styles.pressed,
+                  ]}
+                >
+                  <FontAwesomeIcon name="arrow-right" size={17} color={theme.brassSoft} />
+                </Pressable>
 
-            <Text style={[styles.title, { color: theme.ivory }]}>{title}</Text>
+                <Text style={[styles.title, { color: theme.ivory }]}>{title}</Text>
+              </>
+            )}
             {headerExtra}
           </View>
 
@@ -105,18 +118,18 @@ const styles = StyleSheet.create({
   // so the watermark's negative zIndex keeps it behind the title, back button
   // and hero logo while still painting above the page gradient.
   header: { position: 'relative', overflow: 'visible', paddingBottom: 2 },
+  watermarkHeader: { zIndex: 0 },
   watermark: {
     position: 'absolute',
     top: -80,
     left: -50,
     width: 470,
-    // react-native-web injects the asset's intrinsic width (1254px) inline,
-    // which would otherwise push the contained logo far outside the header.
-    maxWidth: 470,
     height: 470,
     opacity: 0.06,
+    transform: [{ rotate: '-8deg' }],
     zIndex: -1,
   },
+  watermarkImage: { width: '100%', height: '100%' },
   backButton: {
     alignSelf: 'flex-end',
     width: 42,
