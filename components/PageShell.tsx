@@ -126,7 +126,6 @@ const styles = StyleSheet.create({
     width: 470,
     height: 470,
     opacity: 0.06,
-    transform: [{ rotate: '-8deg' }],
     zIndex: -1,
   },
   watermarkImage: { width: '100%', height: '100%' },
