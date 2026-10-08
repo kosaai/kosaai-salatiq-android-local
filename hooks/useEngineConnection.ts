@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Platform } from 'react-native';
 import { checkEngineConnection, getEngineApiUrl } from '../services/engineConnection';
 import type { EngineStatus } from '../types/prayer';
 
@@ -9,7 +10,7 @@ export function useEngineConnection() {
   const checkConnection = useCallback(async () => {
     const currentRequest = ++requestId.current;
 
-    if (!getEngineApiUrl()) {
+    if (Platform.OS !== 'android' && !getEngineApiUrl()) {
       setEngineStatus('disconnected');
       return 'disconnected' as const;
     }

@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { StyleSheet, Text, View } from 'react-native';
+import { Platform, StyleSheet, Text, View } from 'react-native';
 import { colors, lightColors } from '../constants/theme';
 import { prayerConfig } from '../constants/prayers';
 import type { PrayerState, PrayerType } from '../types/prayer';
@@ -56,7 +56,9 @@ export function PrayerOverviewCard({ prayer, state, isDarkMode }: PrayerOverview
         <View style={styles.privacyLine}>
           <FontAwesomeIcon name="lock" size={15} color={theme.brassSoft} />
           <Text style={[styles.statusPrivacy, { color: theme.muted }]}>
-            تتم المعالجة بأمان على جهازك
+            {Platform.OS === 'android'
+              ? 'تتم المعالجة بأمان على جهازك'
+              : 'تتم معالجة صور الكاميرا عبر الخادم'}
           </Text>
         </View>
       </View>

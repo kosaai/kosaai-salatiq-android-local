@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Salatiq",
+    "name": "صلاتك",
     "slug": "salatiq-expo",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "scheme": "salatiq",
     "userInterfaceStyle": "dark",
     "plugins": [
       "expo-router",
@@ -17,18 +17,21 @@
         }
       ],
       "expo-asset",
-      "expo-audio"
+      "expo-audio",
+      "./plugins/withLocalClassification",
+      "expo-font"
     ],
     "ios": {
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "backgroundColor": "#0A141C",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
-      },
+      "package": "com.kosaai.salatiq",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {

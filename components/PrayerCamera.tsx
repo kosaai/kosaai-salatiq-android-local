@@ -4,6 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  AppState,
   Platform,
   Pressable,
   StyleSheet,
@@ -11,9 +12,10 @@ import {
   View,
 } from 'react-native';
 import { colors, lightColors } from '../constants/theme';
-import { predictImage, type PredictionPose } from '../services/predictionApi';
+import { predictImage, type PredictionPose, type PredictionResponse } from '../services/predictionApi';
 import type { CameraStatus, EngineStatus } from '../types/prayer';
 import { FontAwesomeIcon } from './FontAwesomeIcon';
+import { LocalClassificationCamera } from './LocalClassificationCamera';
 
 type PrayerCameraProps = {
   onStatusChange: (status: CameraStatus) => void;
@@ -100,6 +102,14 @@ function isDetectedPrayerPose(pose: PredictionPose | null): pose is PredictionPo
 }
 
 function getEnginePresentation(status: EngineStatus, cameraActive: boolean) {
+  if (Platform.OS === 'android') {
+    switch (status) {
+      case 'connected': return { text: 'المحرك المحلي جاهز', color: colors.sage };
+      case 'connecting': return { text: 'جاري تهيئة المحرك المحلي...', color: colors.brassSoft };
+      case 'error': return { text: 'تعذر تشغيل المحرك المحلي — يلزم بناء Android الأصلي', color: colors.danger };
+      default: return { text: 'المحرك المحلي غير جاهز', color: colors.muted };
+    }
+  }
   switch (status) {
     case 'connecting':
       return { text: 'جاري الاتصال بالمحرك...', color: colors.brassSoft };
@@ -152,6 +162,7 @@ export function PrayerCamera({
   const cameraActiveRef = useRef(false);
   const cameraReadyRef = useRef(false);
   const sessionIdRef = useRef(sessionId);
+  const appForegroundRef = useRef(AppState.currentState === 'active');
   const [permission, requestPermission] = useCameraPermissions();
   const [isActive, setIsActive] = useState(false);
   const [isCameraReady, setIsCameraReady] = useState(false);
@@ -175,10 +186,47 @@ export function PrayerCamera({
     countdown === null &&
     pendingNewSessionStartId === null;
   const engine = getEnginePresentation(engineStatus, isActive);
+  const localInferenceEnabled = engineStatus === 'connected' && isCameraReady &&
+    isActive && isPrayerStarted && countdown === null;
 
   useEffect(() => {
     onPoseDetectedRef.current = onPoseDetected;
   }, [onPoseDetected]);
+
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const subscription = AppState.addEventListener('change', (state) => {
+      appForegroundRef.current = state === 'active';
+      // A background interval is not evidence of continuous observed stability.
+      poseCandidateRef.current = null;
+    });
+    return () => subscription.remove();
+  }, []);
+
+  // Shared by remote Web results and native Android results. Preserve the
+  // result-driven 1-second filter and lastLivePoseRef duplicate protection.
+  const receivePrediction = useCallback((result: PredictionResponse) => {
+    const pose = result.pose;
+    if (pose !== lastReceivedPoseRef.current) {
+      logLive(`pose received: ${pose}`);
+      lastReceivedPoseRef.current = pose;
+    }
+
+    if (!isDetectedPrayerPose(pose)) {
+      poseCandidateRef.current = null;
+    } else {
+      const now = Date.now();
+      const candidate = poseCandidateRef.current;
+
+      if (!candidate || candidate.pose !== pose) {
+        poseCandidateRef.current = { pose, startedAt: now };
+      } else if (now - candidate.startedAt >= POSE_STABILITY_MS && pose !== lastLivePoseRef.current) {
+        onPoseDetectedRef.current(pose, result.confidence);
+        logLive(`pose: ${pose}`);
+        lastLivePoseRef.current = pose;
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!graceStartedAt) return;
@@ -282,6 +330,11 @@ export function PrayerCamera({
   }, [clearCountdownTimer, onStatusChange, setCountdown, stopLiveLoop]);
 
   const toggleFacing = useCallback(() => {
+    if (Platform.OS === 'android') {
+      poseCandidateRef.current = null;
+      cameraReadyRef.current = false;
+      setIsCameraReady(false);
+    }
     setFacing((current) => (current === 'front' ? 'back' : 'front'));
   }, []);
 
@@ -351,6 +404,13 @@ export function PrayerCamera({
   }, [clearCountdownTimer, engineStatus, setCountdown, stopLiveLoop]);
 
   useEffect(() => {
+    if (Platform.OS !== 'android' || !localInferenceEnabled) return;
+    liveLoopActiveRef.current = true;
+    return stopLiveLoop;
+  }, [localInferenceEnabled, sessionId, stopLiveLoop]);
+
+  useEffect(() => {
+    if (Platform.OS === 'android') return;
     if (
       engineStatus !== 'connected' ||
       !isCameraReady ||
@@ -444,26 +504,7 @@ export function PrayerCamera({
 
         if (cancelled || loopSessionId !== sessionIdRef.current) return;
 
-        const pose = result.pose;
-        if (pose !== lastReceivedPoseRef.current) {
-          logLive(`pose received: ${pose}`);
-          lastReceivedPoseRef.current = pose;
-        }
-
-        if (!isDetectedPrayerPose(pose)) {
-          poseCandidateRef.current = null;
-        } else {
-          const now = Date.now();
-          const candidate = poseCandidateRef.current;
-
-          if (!candidate || candidate.pose !== pose) {
-            poseCandidateRef.current = { pose, startedAt: now };
-          } else if (now - candidate.startedAt >= POSE_STABILITY_MS && pose !== lastLivePoseRef.current) {
-            onPoseDetectedRef.current(pose, result.confidence);
-            logLive(`pose: ${pose}`);
-            lastLivePoseRef.current = pose;
-          }
-        }
+        receivePrediction(result);
       } catch {
         // predictionApi logs the detailed request failure in development.
       } finally {
@@ -492,6 +533,7 @@ export function PrayerCamera({
     isCameraReady,
     sessionId,
     stopLiveLoop,
+    receivePrediction,
   ]);
 
   const startPrayer = useCallback(() => {
@@ -515,6 +557,24 @@ export function PrayerCamera({
     setFinishedPrayer(true);
   }, [clearCountdownTimer, setCountdown, stopLiveLoop]);
 
+  const handleCameraReady = () => {
+    cameraReadyRef.current = true;
+    setIsCameraReady(true);
+    onStatusChange('READY');
+  };
+
+  const handleCameraError = (message: string) => {
+    clearCountdownTimer();
+    stopLiveLoop();
+    cameraActiveRef.current = false;
+    cameraReadyRef.current = false;
+    setError(message || 'تعذر تشغيل معاينة الكاميرا.');
+    setIsActive(false);
+    setIsCameraReady(false);
+    setCountdown(null);
+    onStatusChange('ERROR');
+  };
+
   return (
     <View>
       <LinearGradient
@@ -530,28 +590,32 @@ export function PrayerCamera({
         >
           {isActive ? (
             <>
+              {Platform.OS === 'android' ? (
+                <LocalClassificationCamera
+                  style={StyleSheet.absoluteFill}
+                  facing={facing}
+                  inferenceEnabled={localInferenceEnabled}
+                  sessionId={sessionId}
+                  onCameraReady={handleCameraReady}
+                  onMountError={({ nativeEvent }) => handleCameraError(nativeEvent.message)}
+                  onPrediction={({ nativeEvent }) => {
+                    if (nativeEvent.sessionId === sessionId && nativeEvent.sessionId === sessionIdRef.current &&
+                        liveLoopActiveRef.current && cameraActiveRef.current &&
+                        cameraReadyRef.current && appForegroundRef.current) {
+                      receivePrediction(nativeEvent);
+                    }
+                  }}
+                />
+              ) : (
               <CameraView
                 ref={cameraRef}
                 style={StyleSheet.absoluteFill}
                 facing={facing}
                 mirror={facing === 'front'}
-                onCameraReady={() => {
-                  cameraReadyRef.current = true;
-                  setIsCameraReady(true);
-                  onStatusChange('READY');
-                }}
-                onMountError={({ message }) => {
-                  clearCountdownTimer();
-                  stopLiveLoop();
-                  cameraActiveRef.current = false;
-                  cameraReadyRef.current = false;
-                  setError(message || 'تعذر تشغيل معاينة الكاميرا.');
-                  setIsActive(false);
-                  setIsCameraReady(false);
-                  setCountdown(null);
-                  onStatusChange('ERROR');
-                }}
+                onCameraReady={handleCameraReady}
+                onMountError={({ message }) => handleCameraError(message)}
               />
+              )}
               {countdown !== null ? (
                 <View pointerEvents="none" style={styles.countdownOverlay}>
                   <Text style={styles.countdownText}>{countdown}</Text>
