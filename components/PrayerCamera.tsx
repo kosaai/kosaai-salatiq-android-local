@@ -105,7 +105,7 @@ function getEnginePresentation(status: EngineStatus, cameraActive: boolean) {
       return { text: 'جاري الاتصال بالمحرك...', color: colors.brassSoft };
     case 'connected':
       return {
-        text: cameraActive ? 'الكاميرا تعمل — المحرك متصل' : 'المحرك متصل',
+        text: 'المحرك متصل',
         color: colors.sage,
       };
     case 'error':
@@ -557,7 +557,7 @@ export function PrayerCamera({
                   <Text style={styles.countdownText}>{countdown}</Text>
                 </View>
               ) : null}
-              {engineStatus !== 'error' ? (
+              {engineStatus !== 'error' && engineStatus !== 'connected' ? (
                 <View pointerEvents="none" style={styles.statusPill}>
                   <View style={[styles.engineDot, { backgroundColor: engine.color }]} />
                   <Text style={styles.statusText}>{engine.text}</Text>
