@@ -36,6 +36,7 @@ export type SahwAlertType =
   | 'MISSING_STAGE'
   | 'EXTRA_STAGE'
   | 'EXTRA_RAKAH'
+  | 'MOVEMENT_AFTER_FINAL_TASHAHHUD'
   | 'EARLY_TASHAHHUD';
 
 export interface SahwSkippedStage {

@@ -107,7 +107,6 @@ export function PrayerStageCard({
     : isPostSujudTransitionGrace
       ? 'PROSTRATING'
       : currentPose;
-  const confidence = state.confidence;
   const isExtraBowing = currentPose === 'BOWING' && latestSahwAlert?.type === 'EXTRA_BOWING';
   const tashahhudKind = state.sequence.awaitingFirstTashahhud
     ? 'first'
@@ -130,7 +129,6 @@ export function PrayerStageCard({
       displayedPose === 'BOWING' ||
       displayedPose === 'PROSTRATING' ||
       displayedPose === 'SITTING');
-  const showConfidence = engineStatus === 'connected' && typeof confidence === 'number';
 
   return (
     <View style={[styles.card, { borderColor: theme.line, backgroundColor: theme.panel }]}>
@@ -154,12 +152,6 @@ export function PrayerStageCard({
             </Text>
           </View>
         </View>
-        {showConfidence ? (
-          <View style={styles.confidence}>
-            <Text style={[styles.confidenceLabel, { color: theme.muted }]}>الثقة</Text>
-            <Text style={[styles.confidenceValue, { color: theme.brassSoft }]}>{Math.round(confidence * 100)}%</Text>
-          </View>
-        ) : null}
       </View>
 
       <View style={[styles.separator, { backgroundColor: theme.line }]} />
@@ -192,9 +184,6 @@ export function PrayerStageCard({
                   <Text style={[styles.timelineLabel, { color: isGold ? theme.brassSoft : theme.muted }]}>
                     {node.label}
                   </Text>
-                  <Text style={[styles.rakahNumber, { color: isGold ? theme.brassSoft : theme.muted }]}>
-                    {node.rakah}
-                  </Text>
                 </View>
               );
             })}
@@ -218,7 +207,7 @@ export function PrayerStageCard({
                 ]}
               >
                 <Text style={[styles.sahwEntryText, { color: theme.brassSoft }]}>
-                  {`${index + 1}. ${alert.message_ar} في الركعة ${alert.rakah}`}
+                   {`${index + 1}. ${alert.message_ar}${alert.type === 'MOVEMENT_AFTER_FINAL_TASHAHHUD' ? '' : ` في الركعة ${alert.rakah}`}`}
                 </Text>
               </View>
             ))}
@@ -244,9 +233,6 @@ const styles = StyleSheet.create({
   iconPlaceholder: { width: 56, height: 56 },
   stageCopy: { flex: 1, minWidth: 0 },
   currentText: { color: colors.ivory, fontSize: 15, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl' },
-  confidence: { minWidth: 48, alignItems: 'flex-start', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: colors.line, paddingRight: 12 },
-  confidenceLabel: { color: colors.muted, fontSize: 10.5, writingDirection: 'rtl' },
-  confidenceValue: { color: colors.brassSoft, fontSize: 16, fontWeight: '700', marginTop: 3, fontVariant: ['tabular-nums'] },
   separator: { height: StyleSheet.hairlineWidth, backgroundColor: colors.line, marginVertical: 16 },
   timelineTitle: { color: colors.muted, fontSize: 11, textAlign: 'right', writingDirection: 'rtl', marginBottom: 13 },
   timelineRows: { gap: 16 },
@@ -259,9 +245,6 @@ const styles = StyleSheet.create({
   timelineLabel: { marginTop: 7, minHeight: 24, color: colors.muted, fontSize: 8.5, textAlign: 'center', writingDirection: 'rtl' },
   timelineLabelCurrent: { color: colors.brassSoft, fontWeight: '700' },
   timelineLabelComplete: { color: colors.brassSoft },
-  rakahNumber: { color: colors.muted, fontSize: 9, marginTop: 1, fontVariant: ['tabular-nums'] },
-  rakahNumberCurrent: { color: colors.brassSoft },
-  rakahNumberComplete: { color: colors.brassSoft },
   sahwSection: { marginTop: 18 },
   sahwSeparator: { height: StyleSheet.hairlineWidth, marginBottom: 14 },
   sahwTitle: { fontSize: 13, fontWeight: '700', textAlign: 'right', writingDirection: 'rtl', marginBottom: 10 },

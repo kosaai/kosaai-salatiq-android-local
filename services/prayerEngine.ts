@@ -73,6 +73,7 @@ const sahwMessages: Record<SahwAlertType, string> = {
   EXTRA_STAGE: 'تم تكرار مرحلة من الصلاة',
   EXTRA_RAKAH: 'تم البدء بركعة زائدة بعد إتمام ركعتي الفجر',
   EARLY_TASHAHHUD: 'تم الجلوس للتشهد قبل إكمال الركعة الثانية',
+  MOVEMENT_AFTER_FINAL_TASHAHHUD: 'يبدو أنك بدأت ركعة جديدة بعد التشهد الأخير',
 };
 
 const sahwSkippedStages: Record<SahwAlertType, SahwSkippedStage[]> = {
@@ -84,6 +85,7 @@ const sahwSkippedStages: Record<SahwAlertType, SahwSkippedStage[]> = {
   EXTRA_STAGE: [],
   EXTRA_RAKAH: [],
   EARLY_TASHAHHUD: [],
+  MOVEMENT_AFTER_FINAL_TASHAHHUD: [],
 };
 
 function addSahwAlert(
@@ -476,7 +478,11 @@ function getValidatorSequence(prayer: PrayerType) {
 
 /** True only while the final tashahhud is the active, already validated stage. */
 function isAtFinalTashahhud(state: PrayerState) {
-  return state.prayerStage === 'TASHAHHUD' && state.sequence.awaitingFinalTashahhud;
+  const finalStage = getFinalTashahhudStage(state.prayerType);
+  return state.prayerStage === 'TASHAHHUD' &&
+    state.sequence.awaitingFinalTashahhud &&
+    state.currentRakah === state.totalRakahs &&
+    Boolean(finalStage && state.completedStageIds.includes(finalStage.id));
 }
 
 function getFinalTashahhudStage(prayer: PrayerType) {
@@ -491,7 +497,7 @@ export function confirmFinalTashahhudTimeout(state: PrayerState): PrayerState {
   const validatorSequence = getValidatorSequence(state.prayerType);
   const finalTashahhudStage = getFinalTashahhudStage(state.prayerType);
 
-  if (!state.finalTashahhudConfirmationStartedAt) return state;
+  if (state.finalTashahhudConfirmationStartedAt === null || state.activeSahwEvent) return state;
 
   if (!isAtFinalTashahhud(state) || !validatorSequence || !finalTashahhudStage) {
     return {
@@ -501,10 +507,17 @@ export function confirmFinalTashahhudTimeout(state: PrayerState): PrayerState {
     };
   }
 
+  if (
+    state.finalTashahhudConfirmationPose === null ||
+    state.finalTashahhudConfirmationPose === 'UNKNOWN' ||
+    state.finalTashahhudConfirmationPose === 'SITTING' ||
+    Date.now() - state.finalTashahhudConfirmationStartedAt < 10_000
+  ) return state;
+
   return {
     ...startActiveSahwEvent(
       state,
-      'MISSING_STAGE',
+      'MOVEMENT_AFTER_FINAL_TASHAHHUD',
       finalTashahhudStage,
       getActiveSahwRecoveryStageIds(validatorSequence, finalTashahhudStage),
     ),
@@ -672,6 +685,16 @@ export function advancePrayerSequence(state: PrayerState, pose: PrayerPose): Pra
   }
 
   if (isAtFinalTashahhud(state)) {
+    // An unknown observation is not evidence of a new movement and breaks
+    // the continuous confirmation window without changing the display.
+    if (pose === 'UNKNOWN') {
+      return {
+        ...state,
+        currentPose: 'SITTING',
+        finalTashahhudConfirmationStartedAt: null,
+        finalTashahhudConfirmationPose: null,
+      };
+    }
     if (pose !== 'SITTING') {
       // Wrong pose at the final tashahhud: freeze the display on the tashahhud,
       // change no stage, show no pose, fire no alert until the window elapses.
