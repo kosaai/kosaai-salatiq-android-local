@@ -1,0 +1,32 @@
+name: Verify SideInstaller Signature
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: macos-latest
+
+    steps:
+      - name: Download signed IPA
+        run: |
+          curl -fL "https://receivers-discussing-sewing-fragrances.trycloudflare.com/app.ipa" -o SideInstaller.ipa
+          ls -lh SideInstaller.ipa
+
+      - name: Extract IPA
+        run: |
+          mkdir ipa
+          unzip -q SideInstaller.ipa -d ipa
+          ls -la ipa/Payload/SideInstaller.app
+
+      - name: Show signing information
+        run: |
+          codesign -d --verbose=4 ipa/Payload/SideInstaller.app 2>&1
+
+      - name: Show entitlements
+        run: |
+          codesign -d --entitlements :- ipa/Payload/SideInstaller.app 2>&1 || true
+
+      - name: Verify Apple code signature
+        run: |
+          codesign --verify --deep --strict --verbose=4 ipa/Payload/SideInstaller.app
