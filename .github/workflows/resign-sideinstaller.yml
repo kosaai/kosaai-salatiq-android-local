@@ -1,4 +1,4 @@
-name: Re-sign SideInstaller with Apple codesign
+name: Re-sign SideInstaller with DxSign P12
 
 on:
   workflow_dispatch:
@@ -6,14 +6,14 @@ on:
       ipa_url:
         description: "SideInstaller IPA URL"
         required: true
-        default: "https://receivers-discussing-sewing-fragrances.trycloudflare.com/app.ipa"
+        default: "https://github.com/FrizzleM/SideInstaller/releases/download/v1.3.0/SideInstaller.ipa"
 
 jobs:
   resign:
     runs-on: macos-latest
 
     steps:
-      - name: Download IPA
+      - name: Download SideInstaller
         run: |
           curl -fL "${{ inputs.ipa_url }}" -o SideInstaller.ipa
           ls -lh SideInstaller.ipa
@@ -23,62 +23,120 @@ jobs:
           rm -rf extracted
           mkdir extracted
           unzip -q SideInstaller.ipa -d extracted
+
           test -d extracted/Payload/SideInstaller.app
+
           echo "IPA extracted OK"
 
-      - name: Decode private key
+      - name: Decode DxSign files
         env:
-          KEY_BASE64: ${{ secrets.APPLE_KEY_PEM_BASE64 }}
+          P12_BASE64: ${{ secrets.APPLE_P12_BASE64 }}
+          PROFILE_BASE64: ${{ secrets.APPLE_MOBILEPROVISION_BASE64 }}
         run: |
-          printf '%s' "$KEY_BASE64" | base64 --decode > private-key.pem
+          python3 - <<'PY'
+          import os
+          import base64
 
-          test -s private-key.pem
+          p12 = base64.b64decode(os.environ["P12_BASE64"])
+          profile = base64.b64decode(os.environ["PROFILE_BASE64"])
 
-          openssl pkey \
-            -in private-key.pem \
-            -check \
-            -noout
+          with open("signing.p12", "wb") as f:
+              f.write(p12)
 
-          echo "Private key OK"
+          with open("profile.mobileprovision", "wb") as f:
+              f.write(profile)
+
+          print("P12 decoded:", len(p12), "bytes")
+          print("Profile decoded:", len(profile), "bytes")
+          PY
+
+          test -s signing.p12
+          test -s profile.mobileprovision
+
+          echo "DxSign files decoded OK"
 
       - name: Decode provisioning profile
         run: |
-          APP="extracted/Payload/SideInstaller.app"
-
           security cms \
             -D \
-            -i "$APP/embedded.mobileprovision" \
+            -i profile.mobileprovision \
             > profile.plist
 
-          echo "Provisioning profile decoded"
+          echo "Provisioning profile decoded OK"
 
-      - name: Extract certificates and entitlements from profile
+      - name: Prepare profile entitlements and Bundle ID
         run: |
+          APP="extracted/Payload/SideInstaller.app"
+
+          cp profile.mobileprovision "$APP/embedded.mobileprovision"
+
           python3 - <<'PY'
           import plistlib
-          import os
+
+          app_path = "extracted/Payload/SideInstaller.app"
+          info_path = app_path + "/Info.plist"
 
           with open("profile.plist", "rb") as f:
               profile = plistlib.load(f)
 
-          print("Profile:", profile.get("Name"))
-          print("Team:", profile.get("TeamIdentifier"))
-          print("Expires:", profile.get("ExpirationDate"))
-
-          certs = profile.get("DeveloperCertificates", [])
-
-          if not certs:
-              raise SystemExit("No DeveloperCertificates found in provisioning profile")
-
-          print("Developer certificates:", len(certs))
-
-          for i, cert in enumerate(certs):
-              path = f"developer-cert-{i}.cer"
-              with open(path, "wb") as f:
-                  f.write(cert)
-              print("Extracted:", path)
-
           entitlements = profile["Entitlements"]
+
+          app_identifier = entitlements.get("application-identifier")
+
+          if not app_identifier:
+              raise SystemExit("ERROR: Profile has no application-identifier")
+
+          prefixes = (
+              profile.get("ApplicationIdentifierPrefix")
+              or profile.get("TeamIdentifier")
+          )
+
+          if not prefixes:
+              raise SystemExit("ERROR: Cannot determine Team/App ID prefix")
+
+          prefix = prefixes[0]
+
+          with open(info_path, "rb") as f:
+              info = plistlib.load(f)
+
+          old_bundle = info.get("CFBundleIdentifier")
+
+          expected_prefix = prefix + "."
+
+          if app_identifier.startswith(expected_prefix):
+              profile_bundle = app_identifier[len(expected_prefix):]
+          else:
+              profile_bundle = app_identifier
+
+          if "*" in profile_bundle:
+              new_bundle = old_bundle
+              entitlements["application-identifier"] = (
+                  prefix + "." + new_bundle
+              )
+
+              if "keychain-access-groups" in entitlements:
+                  groups = []
+
+                  for group in entitlements["keychain-access-groups"]:
+                      if group.endswith(".*"):
+                          groups.append(prefix + "." + new_bundle)
+                      else:
+                          groups.append(group)
+
+                  entitlements["keychain-access-groups"] = groups
+
+          else:
+              new_bundle = profile_bundle
+
+          info["CFBundleIdentifier"] = new_bundle
+
+          with open(info_path, "wb") as f:
+              plistlib.dump(
+                  info,
+                  f,
+                  fmt=plistlib.FMT_BINARY,
+                  sort_keys=False
+              )
 
           with open("entitlements.plist", "wb") as f:
               plistlib.dump(
@@ -88,61 +146,16 @@ jobs:
                   sort_keys=False
               )
 
-          print("App ID:", entitlements.get("application-identifier"))
+          print("Profile name:", profile.get("Name"))
+          print("Team:", profile.get("TeamIdentifier"))
+          print("Expires:", profile.get("ExpirationDate"))
+          print("Original Bundle ID:", old_bundle)
+          print("Signing Bundle ID:", new_bundle)
+          print("Application identifier:",
+                entitlements.get("application-identifier"))
           PY
 
-      - name: Find certificate matching private key
-        run: |
-          KEY_HASH="$(
-            openssl pkey \
-              -in private-key.pem \
-              -pubout \
-              -outform DER |
-            shasum -a 256 |
-            awk '{print $1}'
-          )"
-
-          echo "Private key public hash: $KEY_HASH"
-
-          FOUND=""
-
-          for CERT in developer-cert-*.cer; do
-            CERT_HASH="$(
-              openssl x509 \
-                -inform DER \
-                -in "$CERT" \
-                -pubkey \
-                -noout |
-              openssl pkey \
-                -pubin \
-                -outform DER |
-              shasum -a 256 |
-              awk '{print $1}'
-            )"
-
-            echo "$CERT -> $CERT_HASH"
-
-            if [ "$CERT_HASH" = "$KEY_HASH" ]; then
-              cp "$CERT" certificate.cer
-              FOUND="$CERT"
-              break
-            fi
-          done
-
-          if [ -z "$FOUND" ]; then
-            echo "ERROR: No certificate in provisioning profile matches private key"
-            exit 1
-          fi
-
-          echo "Matching certificate found: $FOUND"
-
-          openssl x509 \
-            -inform DER \
-            -in certificate.cer \
-            -noout \
-            -subject \
-            -serial \
-            -dates
+          echo "Profile installed into app"
 
       - name: Create temporary macOS Keychain
         run: |
@@ -168,21 +181,13 @@ jobs:
 
           echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
 
-      - name: Import Apple certificate
+      - name: Import DxSign P12
+        env:
+          P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
         run: |
-          security import certificate.cer \
+          security import signing.p12 \
             -k "$KEYCHAIN" \
-            -f x509 \
-            -A \
-            -T /usr/bin/codesign
-
-          echo "Certificate imported"
-
-      - name: Import private key
-        run: |
-          security import private-key.pem \
-            -k "$KEYCHAIN" \
-            -f openssl \
+            -P "$P12_PASSWORD" \
             -A \
             -T /usr/bin/codesign
 
@@ -192,7 +197,7 @@ jobs:
             -k "temporary-password" \
             "$KEYCHAIN"
 
-          echo "Private key imported"
+          echo "P12 imported successfully"
 
       - name: Find signing identity
         run: |
@@ -217,14 +222,33 @@ jobs:
           echo "Using identity: $IDENTITY"
           echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
-      - name: Re-sign embedded frameworks
+      - name: Remove old signatures
+        run: |
+          APP="extracted/Payload/SideInstaller.app"
+
+          rm -rf "$APP/_CodeSignature"
+
+          if [ -d "$APP/Frameworks" ]; then
+            find "$APP/Frameworks" \
+              -type d \
+              -name "_CodeSignature" \
+              -prune \
+              -exec rm -rf {} + || true
+          fi
+
+          echo "Old signatures removed"
+
+      - name: Sign embedded dylibs
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
           if [ -d "$APP/Frameworks" ]; then
-
-            find "$APP/Frameworks" -type f -name "*.dylib" -print0 |
+            find "$APP/Frameworks" \
+              -type f \
+              -name "*.dylib" \
+              -print0 |
             while IFS= read -r -d '' ITEM; do
+
               echo "Signing dylib: $ITEM"
 
               codesign \
@@ -232,10 +256,22 @@ jobs:
                 --sign "$IDENTITY" \
                 --timestamp=none \
                 "$ITEM"
-            done
 
-            find "$APP/Frameworks" -depth -type d -name "*.framework" -print0 |
+            done
+          fi
+
+      - name: Sign embedded frameworks
+        run: |
+          APP="extracted/Payload/SideInstaller.app"
+
+          if [ -d "$APP/Frameworks" ]; then
+            find "$APP/Frameworks" \
+              -depth \
+              -type d \
+              -name "*.framework" \
+              -print0 |
             while IFS= read -r -d '' ITEM; do
+
               echo "Signing framework: $ITEM"
 
               codesign \
@@ -243,17 +279,13 @@ jobs:
                 --sign "$IDENTITY" \
                 --timestamp=none \
                 "$ITEM"
-            done
 
-          else
-            echo "No embedded frameworks"
+            done
           fi
 
-      - name: Re-sign SideInstaller with Apple codesign
+      - name: Sign SideInstaller
         run: |
           APP="extracted/Payload/SideInstaller.app"
-
-          rm -rf "$APP/_CodeSignature"
 
           codesign \
             --force \
@@ -263,9 +295,9 @@ jobs:
             --timestamp=none \
             "$APP"
 
-          echo "Apple codesign completed"
+          echo "SideInstaller signed"
 
-      - name: Verify Apple signature
+      - name: Verify signature
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
@@ -275,6 +307,8 @@ jobs:
             --strict \
             --verbose=4 \
             "$APP"
+
+          echo "----- SIGNATURE -----"
 
           codesign \
             -d \
@@ -290,27 +324,48 @@ jobs:
             "$APP" \
             2>&1
 
+          echo "SIGNATURE OK"
+
+      - name: Verify embedded provisioning profile
+        run: |
+          APP="extracted/Payload/SideInstaller.app"
+
+          security cms \
+            -D \
+            -i "$APP/embedded.mobileprovision" \
+            > embedded-profile.plist
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :Name" \
+            embedded-profile.plist
+
+          /usr/libexec/PlistBuddy \
+            -c "Print :ExpirationDate" \
+            embedded-profile.plist
+
+          echo "Embedded profile OK"
+
       - name: Build final IPA
         run: |
           cd extracted
 
           zip \
             -qry \
-            ../SideInstaller-Apple-codesign.ipa \
+            ../SideInstaller-DxSign.ipa \
             Payload
 
           cd ..
 
-          ls -lh SideInstaller-Apple-codesign.ipa
+          ls -lh SideInstaller-DxSign.ipa
 
-      - name: Verify final IPA
+      - name: Final verification
         run: |
           rm -rf final-check
           mkdir final-check
 
           unzip \
             -q \
-            SideInstaller-Apple-codesign.ipa \
+            SideInstaller-DxSign.ipa \
             -d final-check
 
           codesign \
@@ -322,9 +377,9 @@ jobs:
 
           echo "FINAL IPA SIGNATURE OK"
 
-      - name: Upload final IPA
+      - name: Upload signed IPA
         uses: actions/upload-artifact@v4
         with:
-          name: SideInstaller-Apple-codesign
-          path: SideInstaller-Apple-codesign.ipa
+          name: SideInstaller-DxSign
+          path: SideInstaller-DxSign.ipa
           retention-days: 3
