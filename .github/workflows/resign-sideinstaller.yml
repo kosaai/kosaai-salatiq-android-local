@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       ipa_url:
-        description: "URL of the signed SideInstaller IPA"
+        description: "SideInstaller IPA URL"
         required: true
         default: "https://receivers-discussing-sewing-fragrances.trycloudflare.com/app.ipa"
 
@@ -23,62 +23,37 @@ jobs:
           rm -rf extracted
           mkdir extracted
           unzip -q SideInstaller.ipa -d extracted
+
           test -d extracted/Payload/SideInstaller.app
-          echo "IPA extracted successfully"
+          echo "IPA extracted OK"
 
-      - name: Decode P12
+      - name: Decode Apple certificate and private key
         env:
-          P12_BASE64: ${{ secrets.APPLE_P12_BASE64 }}
+          CERT_BASE64: ${{ secrets.APPLE_CERT_PEM_BASE64 }}
+          KEY_BASE64: ${{ secrets.APPLE_KEY_PEM_BASE64 }}
         run: |
-          printf '%s' "$P12_BASE64" | base64 --decode > signing.p12
-          ls -lh signing.p12
-          test -s signing.p12
+          printf '%s' "$CERT_BASE64" | base64 --decode > certificate.pem
+          printf '%s' "$KEY_BASE64" | base64 --decode > private-key.pem
 
-      - name: Extract certificate and private key
-        env:
-          P12_PASSWORD: ${{ secrets.APPLE_P12_PASSWORD }}
+          test -s certificate.pem
+          test -s private-key.pem
+
+          echo "Certificate:"
+          openssl x509 \
+            -in certificate.pem \
+            -noout \
+            -subject \
+            -serial \
+            -dates
+
+          echo "Private key:"
+          openssl pkey \
+            -in private-key.pem \
+            -check \
+            -noout
+
+      - name: Convert signing files for macOS Keychain
         run: |
-          echo "OpenSSL:"
-          openssl version
-
-          rm -f certificate.pem private-key.pem certificate.cer private-key.p8
-
-          if ! openssl pkcs12 \
-            -in signing.p12 \
-            -passin env:P12_PASSWORD \
-            -clcerts \
-            -nokeys \
-            -out certificate.pem
-          then
-            echo "Normal PKCS12 read failed, trying legacy mode..."
-            rm -f certificate.pem
-            openssl pkcs12 \
-              -legacy \
-              -in signing.p12 \
-              -passin env:P12_PASSWORD \
-              -clcerts \
-              -nokeys \
-              -out certificate.pem
-          fi
-
-          if ! openssl pkcs12 \
-            -in signing.p12 \
-            -passin env:P12_PASSWORD \
-            -nocerts \
-            -nodes \
-            -out private-key.pem
-          then
-            echo "Normal private-key extraction failed, trying legacy mode..."
-            rm -f private-key.pem
-            openssl pkcs12 \
-              -legacy \
-              -in signing.p12 \
-              -passin env:P12_PASSWORD \
-              -nocerts \
-              -nodes \
-              -out private-key.pem
-          fi
-
           openssl x509 \
             -in certificate.pem \
             -outform DER \
@@ -91,17 +66,31 @@ jobs:
             -outform DER \
             -out private-key.p8
 
-          echo "Certificate:"
-          openssl x509 \
-            -in certificate.pem \
-            -noout \
-            -subject \
-            -serial \
-            -dates
+          ls -lh certificate.cer private-key.p8
 
-          echo "Signing files prepared successfully"
+      - name: Verify certificate matches private key
+        run: |
+          CERT_HASH="$(
+            openssl x509 -in certificate.pem -pubkey -noout |
+            openssl pkey -pubin -outform DER |
+            shasum -a 256 |
+            awk '{print $1}'
+          )"
 
-      - name: Create temporary macOS keychain
+          KEY_HASH="$(
+            openssl pkey -in private-key.pem -pubout -outform DER |
+            shasum -a 256 |
+            awk '{print $1}'
+          )"
+
+          echo "Certificate public key: $CERT_HASH"
+          echo "Private key public key: $KEY_HASH"
+
+          test "$CERT_HASH" = "$KEY_HASH"
+
+          echo "Certificate and private key MATCH"
+
+      - name: Create temporary macOS Keychain
         run: |
           security create-keychain \
             -p "temporary-password" \
@@ -128,12 +117,14 @@ jobs:
           security import certificate.cer \
             -k build.keychain \
             -f x509 \
-            -A
+            -A \
+            -T /usr/bin/codesign
 
           security import private-key.p8 \
             -k build.keychain \
             -f pkcs8 \
-            -A
+            -A \
+            -T /usr/bin/codesign
 
           security set-key-partition-list \
             -S apple-tool:,apple:,codesign: \
@@ -141,24 +132,37 @@ jobs:
             -k "temporary-password" \
             build.keychain
 
-          echo "Available signing identities:"
+          echo "Signing identities:"
           security find-identity \
             -v \
             -p codesigning \
             build.keychain
 
-          COUNT="$(security find-identity -v -p codesigning build.keychain | grep -c '"' || true)"
+      - name: Select signing identity
+        run: |
+          IDENTITY="$(
+            security find-identity \
+              -v \
+              -p codesigning \
+              build.keychain |
+            awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}'
+          )"
 
-          if [ "$COUNT" -lt 1 ]; then
-            echo "ERROR: No Apple codesigning identity found"
+          if [ -z "$IDENTITY" ]; then
+            echo "No valid Apple signing identity found"
             exit 1
           fi
 
-      - name: Extract provisioning entitlements
+          echo "Signing identity SHA1: $IDENTITY"
+          echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Read provisioning profile
         run: |
+          APP="extracted/Payload/SideInstaller.app"
+
           security cms \
             -D \
-            -i extracted/Payload/SideInstaller.app/embedded.mobileprovision \
+            -i "$APP/embedded.mobileprovision" \
             > profile.plist
 
           python3 - <<'PY'
@@ -174,6 +178,8 @@ jobs:
 
           entitlements = profile["Entitlements"]
 
+          print("App ID:", entitlements.get("application-identifier"))
+
           with open("entitlements.plist", "wb") as f:
               plistlib.dump(
                   entitlements,
@@ -181,32 +187,26 @@ jobs:
                   fmt=plistlib.FMT_XML,
                   sort_keys=False
               )
-
-          print("application-identifier:",
-                entitlements.get("application-identifier"))
           PY
 
-      - name: Find Apple signing identity
+      - name: Remove old code signature
         run: |
-          IDENTITY="$(security find-identity \
-            -v \
-            -p codesigning \
-            build.keychain |
-            grep '"' |
-            head -1 |
-            sed 's/.*"\(.*\)"/\1/')"
+          APP="extracted/Payload/SideInstaller.app"
 
-          echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-          echo "Using Apple signing identity: $IDENTITY"
+          rm -rf "$APP/_CodeSignature"
 
-      - name: Re-sign embedded frameworks
+          echo "Old _CodeSignature removed"
+
+      - name: Re-sign nested components
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
           if [ -d "$APP/Frameworks" ]; then
+
             find "$APP/Frameworks" -type f -name "*.dylib" -print0 |
             while IFS= read -r -d '' ITEM; do
               echo "Signing dylib: $ITEM"
+
               codesign \
                 --force \
                 --sign "$IDENTITY" \
@@ -217,17 +217,19 @@ jobs:
             find "$APP/Frameworks" -type d -name "*.framework" -print0 |
             while IFS= read -r -d '' ITEM; do
               echo "Signing framework: $ITEM"
+
               codesign \
                 --force \
                 --sign "$IDENTITY" \
                 --timestamp=none \
                 "$ITEM"
             done
+
           else
-            echo "No embedded Frameworks directory"
+            echo "No embedded Frameworks"
           fi
 
-      - name: Re-sign SideInstaller using Apple codesign
+      - name: Sign SideInstaller with Apple codesign
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
@@ -239,9 +241,9 @@ jobs:
             --timestamp=none \
             "$APP"
 
-          echo "Apple codesign completed"
+          echo "Apple codesign finished"
 
-      - name: Verify new Apple signature
+      - name: Verify Apple signature
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
@@ -252,7 +254,7 @@ jobs:
             --verbose=4 \
             "$APP"
 
-          echo "---- SIGNING INFO ----"
+          echo "----- SIGNING INFO -----"
 
           codesign \
             -d \
@@ -260,7 +262,7 @@ jobs:
             "$APP" \
             2>&1
 
-          echo "---- ENTITLEMENTS ----"
+          echo "----- ENTITLEMENTS -----"
 
           codesign \
             -d \
@@ -268,7 +270,7 @@ jobs:
             "$APP" \
             2>&1
 
-      - name: Build new IPA
+      - name: Build Apple-signed IPA
         run: |
           cd extracted
 
@@ -281,7 +283,7 @@ jobs:
 
           ls -lh SideInstaller-Apple-codesign.ipa
 
-      - name: Final IPA verification
+      - name: Verify final IPA
         run: |
           rm -rf final-check
           mkdir final-check
@@ -300,7 +302,7 @@ jobs:
 
           echo "FINAL IPA SIGNATURE OK"
 
-      - name: Upload re-signed IPA
+      - name: Upload final IPA
         uses: actions/upload-artifact@v4
         with:
           name: SideInstaller-Apple-codesign
