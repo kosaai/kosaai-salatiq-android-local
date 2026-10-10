@@ -1,0 +1,65 @@
+workflows:
+
+  salatiq-mac-vnc:
+
+    name: Salatiq Mac VNC - Xcode 27
+
+    instance_type: mac_mini_m2
+
+    max_build_duration: 120
+
+    environment:
+
+      xcode: 27.1
+
+      cocoapods: default
+
+    scripts:
+
+      - name: Show Mac and Xcode environment
+
+        script: |
+
+          echo "===== macOS ====="
+
+          sw_vers
+
+          echo "===== Xcode ====="
+
+          xcodebuild -version
+
+          echo "===== Available iOS runtimes ====="
+
+          xcrun simctl list runtimes
+
+          echo "===== Hardware ====="
+
+          system_profiler SPHardwareDataType
+
+      - name: Prepare Core ML environment
+
+        script: |
+
+          python3 -m venv "$HOME/salatiq-coreml"
+
+          source "$HOME/salatiq-coreml/bin/activate"
+
+          python -m pip install --upgrade pip
+
+          pip install ultralytics coremltools
+
+          python --version
+
+          pip show ultralytics coremltools
+
+      - name: Keep Mac alive for VNC session
+
+        script: |
+
+          echo "Mac is ready for VNC/Xcode work."
+
+          echo "Core ML environment: $HOME/salatiq-coreml"
+
+          echo "Activate with: source $HOME/salatiq-coreml/bin/activate"
+
+          sleep 6900
