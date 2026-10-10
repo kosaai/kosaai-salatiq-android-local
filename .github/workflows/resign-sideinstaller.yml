@@ -23,140 +23,25 @@ jobs:
           rm -rf extracted
           mkdir extracted
           unzip -q SideInstaller.ipa -d extracted
-
           test -d extracted/Payload/SideInstaller.app
           echo "IPA extracted OK"
 
-      - name: Decode Apple certificate and private key
+      - name: Decode private key
         env:
-          CERT_BASE64: ${{ secrets.APPLE_CERT_PEM_BASE64 }}
           KEY_BASE64: ${{ secrets.APPLE_KEY_PEM_BASE64 }}
         run: |
-          printf '%s' "$CERT_BASE64" | base64 --decode > certificate.pem
           printf '%s' "$KEY_BASE64" | base64 --decode > private-key.pem
 
-          test -s certificate.pem
           test -s private-key.pem
 
-          echo "Certificate:"
-          openssl x509 \
-            -in certificate.pem \
-            -noout \
-            -subject \
-            -serial \
-            -dates
-
-          echo "Private key:"
           openssl pkey \
             -in private-key.pem \
             -check \
             -noout
 
-      - name: Convert signing files for macOS Keychain
-        run: |
-          openssl x509 \
-            -in certificate.pem \
-            -outform DER \
-            -out certificate.cer
+          echo "Private key OK"
 
-          openssl pkcs8 \
-            -topk8 \
-            -nocrypt \
-            -in private-key.pem \
-            -outform DER \
-            -out private-key.p8
-
-          ls -lh certificate.cer private-key.p8
-
-      - name: Verify certificate matches private key
-        run: |
-          CERT_HASH="$(
-            openssl x509 -in certificate.pem -pubkey -noout |
-            openssl pkey -pubin -outform DER |
-            shasum -a 256 |
-            awk '{print $1}'
-          )"
-
-          KEY_HASH="$(
-            openssl pkey -in private-key.pem -pubout -outform DER |
-            shasum -a 256 |
-            awk '{print $1}'
-          )"
-
-          echo "Certificate public key: $CERT_HASH"
-          echo "Private key public key: $KEY_HASH"
-
-          test "$CERT_HASH" = "$KEY_HASH"
-
-          echo "Certificate and private key MATCH"
-
-      - name: Create temporary macOS Keychain
-        run: |
-          security create-keychain \
-            -p "temporary-password" \
-            build.keychain
-
-          security set-keychain-settings \
-            -lut 21600 \
-            build.keychain
-
-          security unlock-keychain \
-            -p "temporary-password" \
-            build.keychain
-
-          security list-keychains \
-            -d user \
-            -s build.keychain
-
-          security default-keychain \
-            -d user \
-            -s build.keychain
-
-      - name: Import Apple certificate and private key
-        run: |
-          security import certificate.cer \
-            -k build.keychain \
-            -f x509 \
-            -A \
-            -T /usr/bin/codesign
-
-          security import private-key.p8 \
-            -k build.keychain \
-            -f pkcs8 \
-            -A \
-            -T /usr/bin/codesign
-
-          security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
-            -s \
-            -k "temporary-password" \
-            build.keychain
-
-          echo "Signing identities:"
-          security find-identity \
-            -v \
-            -p codesigning \
-            build.keychain
-
-      - name: Select signing identity
-        run: |
-          IDENTITY="$(
-            security find-identity \
-              -v \
-              -p codesigning \
-              build.keychain |
-            awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}'
-          )"
-
-          if [ -z "$IDENTITY" ]; then
-            echo "No valid Apple signing identity found"
-            exit 1
-          fi
-
-          echo "Signing identity SHA1: $IDENTITY"
-          echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
-
-      - name: Read provisioning profile
+      - name: Decode provisioning profile
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
@@ -165,8 +50,13 @@ jobs:
             -i "$APP/embedded.mobileprovision" \
             > profile.plist
 
+          echo "Provisioning profile decoded"
+
+      - name: Extract certificates and entitlements from profile
+        run: |
           python3 - <<'PY'
           import plistlib
+          import os
 
           with open("profile.plist", "rb") as f:
               profile = plistlib.load(f)
@@ -174,11 +64,21 @@ jobs:
           print("Profile:", profile.get("Name"))
           print("Team:", profile.get("TeamIdentifier"))
           print("Expires:", profile.get("ExpirationDate"))
-          print("Devices:", profile.get("ProvisionedDevices"))
+
+          certs = profile.get("DeveloperCertificates", [])
+
+          if not certs:
+              raise SystemExit("No DeveloperCertificates found in provisioning profile")
+
+          print("Developer certificates:", len(certs))
+
+          for i, cert in enumerate(certs):
+              path = f"developer-cert-{i}.cer"
+              with open(path, "wb") as f:
+                  f.write(cert)
+              print("Extracted:", path)
 
           entitlements = profile["Entitlements"]
-
-          print("App ID:", entitlements.get("application-identifier"))
 
           with open("entitlements.plist", "wb") as f:
               plistlib.dump(
@@ -187,17 +87,137 @@ jobs:
                   fmt=plistlib.FMT_XML,
                   sort_keys=False
               )
+
+          print("App ID:", entitlements.get("application-identifier"))
           PY
 
-      - name: Remove old code signature
+      - name: Find certificate matching private key
         run: |
-          APP="extracted/Payload/SideInstaller.app"
+          KEY_HASH="$(
+            openssl pkey \
+              -in private-key.pem \
+              -pubout \
+              -outform DER |
+            shasum -a 256 |
+            awk '{print $1}'
+          )"
 
-          rm -rf "$APP/_CodeSignature"
+          echo "Private key public hash: $KEY_HASH"
 
-          echo "Old _CodeSignature removed"
+          FOUND=""
 
-      - name: Re-sign nested components
+          for CERT in developer-cert-*.cer; do
+            CERT_HASH="$(
+              openssl x509 \
+                -inform DER \
+                -in "$CERT" \
+                -pubkey \
+                -noout |
+              openssl pkey \
+                -pubin \
+                -outform DER |
+              shasum -a 256 |
+              awk '{print $1}'
+            )"
+
+            echo "$CERT -> $CERT_HASH"
+
+            if [ "$CERT_HASH" = "$KEY_HASH" ]; then
+              cp "$CERT" certificate.cer
+              FOUND="$CERT"
+              break
+            fi
+          done
+
+          if [ -z "$FOUND" ]; then
+            echo "ERROR: No certificate in provisioning profile matches private key"
+            exit 1
+          fi
+
+          echo "Matching certificate found: $FOUND"
+
+          openssl x509 \
+            -inform DER \
+            -in certificate.cer \
+            -noout \
+            -subject \
+            -serial \
+            -dates
+
+      - name: Create temporary macOS Keychain
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/sideinstaller.keychain-db"
+
+          security create-keychain \
+            -p "temporary-password" \
+            "$KEYCHAIN"
+
+          security set-keychain-settings \
+            -lut 21600 \
+            "$KEYCHAIN"
+
+          security unlock-keychain \
+            -p "temporary-password" \
+            "$KEYCHAIN"
+
+          EXISTING_KEYCHAINS="$(security list-keychains -d user | tr -d '"')"
+
+          security list-keychains \
+            -d user \
+            -s "$KEYCHAIN" $EXISTING_KEYCHAINS
+
+          echo "KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+
+      - name: Import Apple certificate
+        run: |
+          security import certificate.cer \
+            -k "$KEYCHAIN" \
+            -f x509 \
+            -A \
+            -T /usr/bin/codesign
+
+          echo "Certificate imported"
+
+      - name: Import private key
+        run: |
+          security import private-key.pem \
+            -k "$KEYCHAIN" \
+            -f openssl \
+            -A \
+            -T /usr/bin/codesign
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "temporary-password" \
+            "$KEYCHAIN"
+
+          echo "Private key imported"
+
+      - name: Find signing identity
+        run: |
+          security find-identity \
+            -v \
+            -p codesigning \
+            "$KEYCHAIN"
+
+          IDENTITY="$(
+            security find-identity \
+              -v \
+              -p codesigning \
+              "$KEYCHAIN" |
+            awk '/^[[:space:]]*[0-9]+\)/ {print $2; exit}'
+          )"
+
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: No valid signing identity found"
+            exit 1
+          fi
+
+          echo "Using identity: $IDENTITY"
+          echo "IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+
+      - name: Re-sign embedded frameworks
         run: |
           APP="extracted/Payload/SideInstaller.app"
 
@@ -214,7 +234,7 @@ jobs:
                 "$ITEM"
             done
 
-            find "$APP/Frameworks" -type d -name "*.framework" -print0 |
+            find "$APP/Frameworks" -depth -type d -name "*.framework" -print0 |
             while IFS= read -r -d '' ITEM; do
               echo "Signing framework: $ITEM"
 
@@ -226,12 +246,14 @@ jobs:
             done
 
           else
-            echo "No embedded Frameworks"
+            echo "No embedded frameworks"
           fi
 
-      - name: Sign SideInstaller with Apple codesign
+      - name: Re-sign SideInstaller with Apple codesign
         run: |
           APP="extracted/Payload/SideInstaller.app"
+
+          rm -rf "$APP/_CodeSignature"
 
           codesign \
             --force \
@@ -241,7 +263,7 @@ jobs:
             --timestamp=none \
             "$APP"
 
-          echo "Apple codesign finished"
+          echo "Apple codesign completed"
 
       - name: Verify Apple signature
         run: |
@@ -253,8 +275,6 @@ jobs:
             --strict \
             --verbose=4 \
             "$APP"
-
-          echo "----- SIGNING INFO -----"
 
           codesign \
             -d \
@@ -270,7 +290,7 @@ jobs:
             "$APP" \
             2>&1
 
-      - name: Build Apple-signed IPA
+      - name: Build final IPA
         run: |
           cd extracted
 
