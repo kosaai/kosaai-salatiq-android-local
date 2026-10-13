@@ -45,22 +45,16 @@ jobs:
         run: |
           Write-Host "Optimizing Windows performance..."
 
-          # ----------------------------------------------------------
-          # HIGH PERFORMANCE POWER PLAN
-          # ----------------------------------------------------------
-
+          # High Performance
           try {
               Write-Host "Enabling High Performance power plan..."
 
               powercfg /setactive SCHEME_MIN
 
               if ($LASTEXITCODE -ne 0) {
-                  Write-Warning "SCHEME_MIN failed. Trying High Performance GUID..."
-
                   powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
               }
 
-              Write-Host ""
               Write-Host "Current power plan:"
               powercfg /getactivescheme
           }
@@ -68,18 +62,12 @@ jobs:
               Write-Warning "Could not activate High Performance power plan."
           }
 
-
-          # ----------------------------------------------------------
-          # DISABLE TRANSPARENCY
-          # ----------------------------------------------------------
-
+          # Disable Transparency
           try {
               $personalizePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
 
               if (-not (Test-Path $personalizePath)) {
-                  New-Item `
-                    -Path $personalizePath `
-                    -Force | Out-Null
+                  New-Item -Path $personalizePath -Force | Out-Null
               }
 
               New-ItemProperty `
@@ -95,31 +83,21 @@ jobs:
               Write-Warning "Could not disable transparency."
           }
 
-
-          # ----------------------------------------------------------
-          # DISABLE WINDOW ANIMATIONS
-          # ----------------------------------------------------------
-
+          # Disable Window Animations
           try {
-              $windowMetricsPath = "HKCU:\Control Panel\Desktop\WindowMetrics"
-
               Set-ItemProperty `
-                -Path $windowMetricsPath `
+                -Path "HKCU:\Control Panel\Desktop\WindowMetrics" `
                 -Name "MinAnimate" `
                 -Value "0" `
                 -Force
 
-              Write-Host "Window minimize/maximize animations disabled."
+              Write-Host "Window animations disabled."
           }
           catch {
               Write-Warning "Could not disable window animations."
           }
 
-
-          # ----------------------------------------------------------
-          # DISABLE TASKBAR ANIMATIONS
-          # ----------------------------------------------------------
-
+          # Disable Taskbar Animations
           try {
               $explorerAdvanced = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
 
@@ -136,18 +114,12 @@ jobs:
               Write-Warning "Could not disable taskbar animations."
           }
 
-
-          # ----------------------------------------------------------
-          # DISABLE AERO PEEK EFFECT
-          # ----------------------------------------------------------
-
+          # Disable Aero Peek
           try {
               $dwmPath = "HKCU:\Software\Microsoft\Windows\DWM"
 
               if (-not (Test-Path $dwmPath)) {
-                  New-Item `
-                    -Path $dwmPath `
-                    -Force | Out-Null
+                  New-Item -Path $dwmPath -Force | Out-Null
               }
 
               New-ItemProperty `
@@ -163,11 +135,7 @@ jobs:
               Write-Warning "Could not disable Aero Peek."
           }
 
-
-          # ----------------------------------------------------------
-          # REDUCE MENU DELAY
-          # ----------------------------------------------------------
-
+          # Reduce Menu Delay
           try {
               Set-ItemProperty `
                 -Path "HKCU:\Control Panel\Desktop" `
@@ -181,11 +149,7 @@ jobs:
               Write-Warning "Could not reduce menu delay."
           }
 
-
-          # ----------------------------------------------------------
-          # APPLY CURRENT USER SETTINGS
-          # ----------------------------------------------------------
-
+          # Refresh visual settings
           try {
               Start-Process `
                 -FilePath "RUNDLL32.EXE" `
@@ -196,7 +160,6 @@ jobs:
           catch {
               Write-Warning "Could not refresh visual settings immediately."
           }
-
 
           Write-Host ""
           Write-Host "=============================================="
@@ -215,10 +178,10 @@ jobs:
         shell: powershell
         continue-on-error: true
         run: |
-          Write-Host "Configuring display..."
+          Write-Host "Configuring display and wallpaper..."
 
           # ----------------------------------------------------------
-          # DPI / SCALE = 100%
+          # SCALE = 100%
           # ----------------------------------------------------------
 
           try {
@@ -242,9 +205,9 @@ jobs:
               Write-Warning "Could not configure display scaling."
           }
 
+
           # ----------------------------------------------------------
           # RESOLUTION = 1920x1080
-          # First try built-in command, otherwise use QRes.
           # ----------------------------------------------------------
 
           $resolutionSet = $false
@@ -268,7 +231,7 @@ jobs:
 
           if (-not $resolutionSet) {
               try {
-                  Write-Host "Installing QRes for display configuration..."
+                  Write-Host "Installing QRes..."
 
                   choco install qres -y --no-progress
 
@@ -279,7 +242,7 @@ jobs:
 
                       Start-Sleep -Seconds 3
 
-                      Write-Host "Requested resolution: 1920x1080."
+                      Write-Host "Resolution 1920x1080 requested with QRes."
                   }
                   else {
                       Write-Warning "QRes executable was not found."
@@ -290,8 +253,9 @@ jobs:
               }
           }
 
+
           # ----------------------------------------------------------
-          # WINDOWS DEFAULT WALLPAPER
+          # FIND DEFAULT WINDOWS WALLPAPER
           # ----------------------------------------------------------
 
           $wallpaperCandidates = @(
@@ -310,63 +274,97 @@ jobs:
           }
 
           if (-not $wallpaper) {
-              $wallpaper = Get-ChildItem `
-                "$env:WINDIR\Web\Wallpaper" `
+              $foundWallpaper = Get-ChildItem `
+                -Path "$env:WINDIR\Web\Wallpaper" `
                 -Recurse `
-                -Include "*.jpg","*.png" `
+                -File `
                 -ErrorAction SilentlyContinue |
-                Select-Object -First 1 -ExpandProperty FullName
+                Where-Object {
+                    $_.Extension -in ".jpg", ".jpeg", ".png"
+                } |
+                Select-Object -First 1
+
+              if ($foundWallpaper) {
+                  $wallpaper = $foundWallpaper.FullName
+              }
           }
 
+
+          # ----------------------------------------------------------
+          # APPLY WALLPAPER
+          # ----------------------------------------------------------
+
           if ($wallpaper) {
-              Write-Host "Using wallpaper:"
+              Write-Host "Wallpaper found:"
               Write-Host $wallpaper
 
               Set-ItemProperty `
                 -Path "HKCU:\Control Panel\Desktop" `
-                -Name Wallpaper `
+                -Name "Wallpaper" `
                 -Value $wallpaper `
                 -Force
 
               Set-ItemProperty `
                 -Path "HKCU:\Control Panel\Desktop" `
-                -Name WallpaperStyle `
+                -Name "WallpaperStyle" `
                 -Value "10" `
                 -Force
 
               Set-ItemProperty `
                 -Path "HKCU:\Control Panel\Desktop" `
-                -Name TileWallpaper `
+                -Name "TileWallpaper" `
                 -Value "0" `
                 -Force
 
-              Add-Type @"
-              using System;
-              using System.Runtime.InteropServices;
+              try {
+                  $nativeCode = 'using System; using System.Runtime.InteropServices; public static class NativeWallpaper { [DllImport("user32.dll", CharSet=CharSet.Unicode, SetLastError=true)] public static extern bool SystemParametersInfo(int action, int param, string path, int flags); }'
 
-              public class Wallpaper {
-                  [DllImport("user32.dll", SetLastError=true)]
-                  public static extern bool SystemParametersInfo(
-                      int uAction,
-                      int uParam,
-                      string lpvParam,
-                      int fuWinIni
-                  );
+                  Add-Type -TypeDefinition $nativeCode -ErrorAction SilentlyContinue
+
+                  $result = [NativeWallpaper]::SystemParametersInfo(
+                      20,
+                      0,
+                      $wallpaper,
+                      3
+                  )
+
+                  Write-Host "Wallpaper API result: $result"
               }
-              "@
+              catch {
+                  Write-Warning "Wallpaper API failed. Trying registry refresh."
+              }
 
-              [Wallpaper]::SystemParametersInfo(
-                  20,
-                  0,
-                  $wallpaper,
-                  3
-              ) | Out-Null
+              try {
+                  Start-Process `
+                    -FilePath "RUNDLL32.EXE" `
+                    -ArgumentList "user32.dll,UpdatePerUserSystemParameters" `
+                    -WindowStyle Hidden `
+                    -Wait
+              }
+              catch {
+                  Write-Warning "Could not refresh wallpaper immediately."
+              }
 
-              Write-Host "Default Windows wallpaper applied."
+              Write-Host "Default Windows wallpaper configured."
           }
           else {
               Write-Warning "No Windows wallpaper was found."
           }
+
+
+          # ----------------------------------------------------------
+          # DISPLAY INFORMATION
+          # ----------------------------------------------------------
+
+          Write-Host ""
+          Write-Host "Current display information:"
+
+          Get-CimInstance Win32_VideoController |
+            Select-Object `
+              Name,
+              CurrentHorizontalResolution,
+              CurrentVerticalResolution |
+            Format-Table -AutoSize
 
           Write-Host ""
           Write-Host "Display configuration finished."
