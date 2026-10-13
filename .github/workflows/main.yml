@@ -33,79 +33,178 @@ jobs:
 
 
       # ============================================================
-      # ARABIC WINDOWS SETTINGS
-      # لا نعيد تشغيل الجهاز ولا نسجل خروج
+      # PERFORMANCE OPTIMIZATION
+      # High Performance ON
+      # Animations OFF
+      # Transparency OFF
       # ============================================================
 
-      - name: Configure Arabic Windows
+      - name: Optimize Windows Performance
         shell: powershell
         continue-on-error: true
         run: |
-          Write-Host "Configuring Arabic language settings..."
+          Write-Host "Optimizing Windows performance..."
 
-          $lang = "ar-SA"
+          # ----------------------------------------------------------
+          # HIGH PERFORMANCE POWER PLAN
+          # ----------------------------------------------------------
 
-          # Try to install the Arabic language pack if supported
           try {
-              if (Get-Command Install-Language -ErrorAction SilentlyContinue) {
-                  Write-Host "Installing Arabic language pack..."
-                  Install-Language $lang -CopyToSettings -ErrorAction Stop
-                  Write-Host "Arabic language pack installed."
+              Write-Host "Enabling High Performance power plan..."
+
+              powercfg /setactive SCHEME_MIN
+
+              if ($LASTEXITCODE -ne 0) {
+                  Write-Warning "SCHEME_MIN failed. Trying High Performance GUID..."
+
+                  powercfg /setactive 8c5e7fda-e8bf-4a96-9a85-a6e23a8c635c
               }
-              else {
-                  Write-Host "Install-Language command is not available. Continuing with user language settings."
+
+              Write-Host ""
+              Write-Host "Current power plan:"
+              powercfg /getactivescheme
+          }
+          catch {
+              Write-Warning "Could not activate High Performance power plan."
+          }
+
+
+          # ----------------------------------------------------------
+          # DISABLE TRANSPARENCY
+          # ----------------------------------------------------------
+
+          try {
+              $personalizePath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize"
+
+              if (-not (Test-Path $personalizePath)) {
+                  New-Item `
+                    -Path $personalizePath `
+                    -Force | Out-Null
               }
+
+              New-ItemProperty `
+                -Path $personalizePath `
+                -Name "EnableTransparency" `
+                -PropertyType DWord `
+                -Value 0 `
+                -Force | Out-Null
+
+              Write-Host "Transparency disabled."
           }
           catch {
-              Write-Warning "Arabic language pack installation could not complete: $($_.Exception.Message)"
+              Write-Warning "Could not disable transparency."
           }
 
-          # Arabic first, English kept as backup
-          try {
-              $languages = New-WinUserLanguageList $lang
-              $languages.Add("en-US")
-              Set-WinUserLanguageList $languages -Force
-          }
-          catch {
-              Write-Warning "Could not update language list."
-          }
 
-          try {
-              Set-WinUILanguageOverride -Language $lang
-          }
-          catch {
-              Write-Warning "Could not set UI language override."
-          }
+          # ----------------------------------------------------------
+          # DISABLE WINDOW ANIMATIONS
+          # ----------------------------------------------------------
 
           try {
-              Set-Culture $lang
+              $windowMetricsPath = "HKCU:\Control Panel\Desktop\WindowMetrics"
+
+              Set-ItemProperty `
+                -Path $windowMetricsPath `
+                -Name "MinAnimate" `
+                -Value "0" `
+                -Force
+
+              Write-Host "Window minimize/maximize animations disabled."
           }
           catch {
-              Write-Warning "Could not set Arabic culture."
+              Write-Warning "Could not disable window animations."
           }
+
+
+          # ----------------------------------------------------------
+          # DISABLE TASKBAR ANIMATIONS
+          # ----------------------------------------------------------
 
           try {
-              Set-WinSystemLocale $lang
+              $explorerAdvanced = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"
+
+              New-ItemProperty `
+                -Path $explorerAdvanced `
+                -Name "TaskbarAnimations" `
+                -PropertyType DWord `
+                -Value 0 `
+                -Force | Out-Null
+
+              Write-Host "Taskbar animations disabled."
           }
           catch {
-              Write-Warning "Could not set system locale."
+              Write-Warning "Could not disable taskbar animations."
           }
 
-          # Additional current-user locale settings
+
+          # ----------------------------------------------------------
+          # DISABLE AERO PEEK EFFECT
+          # ----------------------------------------------------------
+
+          try {
+              $dwmPath = "HKCU:\Software\Microsoft\Windows\DWM"
+
+              if (-not (Test-Path $dwmPath)) {
+                  New-Item `
+                    -Path $dwmPath `
+                    -Force | Out-Null
+              }
+
+              New-ItemProperty `
+                -Path $dwmPath `
+                -Name "EnableAeroPeek" `
+                -PropertyType DWord `
+                -Value 0 `
+                -Force | Out-Null
+
+              Write-Host "Aero Peek disabled."
+          }
+          catch {
+              Write-Warning "Could not disable Aero Peek."
+          }
+
+
+          # ----------------------------------------------------------
+          # REDUCE MENU DELAY
+          # ----------------------------------------------------------
+
           try {
               Set-ItemProperty `
-                -Path "HKCU:\Control Panel\International" `
-                -Name "LocaleName" `
-                -Value "ar-SA" `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name "MenuShowDelay" `
+                -Value "0" `
                 -Force
+
+              Write-Host "Menu delay reduced."
           }
           catch {
-              Write-Warning "Could not update current-user locale registry."
+              Write-Warning "Could not reduce menu delay."
           }
 
+
+          # ----------------------------------------------------------
+          # APPLY CURRENT USER SETTINGS
+          # ----------------------------------------------------------
+
+          try {
+              Start-Process `
+                -FilePath "RUNDLL32.EXE" `
+                -ArgumentList "user32.dll,UpdatePerUserSystemParameters" `
+                -WindowStyle Hidden `
+                -Wait
+          }
+          catch {
+              Write-Warning "Could not refresh visual settings immediately."
+          }
+
+
           Write-Host ""
-          Write-Host "Arabic configuration completed."
-          Write-Host "Some Windows interface elements may require sign-out before becoming Arabic."
+          Write-Host "=============================================="
+          Write-Host "Performance optimization completed"
+          Write-Host "High Performance : ON"
+          Write-Host "Animations       : OFF"
+          Write-Host "Transparency     : OFF"
+          Write-Host "=============================================="
 
 
       # ============================================================
@@ -530,10 +629,12 @@ jobs:
           Write-Host "--------------------------------------------------"
           Write-Host "Windows preferences"
           Write-Host "--------------------------------------------------"
-          Write-Host "Language      : Arabic (ar-SA) requested"
-          Write-Host "Resolution    : 1920x1080 requested"
-          Write-Host "Scale         : 100%"
-          Write-Host "Wallpaper     : Default Windows wallpaper"
+          Write-Host "Resolution       : 1920x1080 requested"
+          Write-Host "Scale            : 100%"
+          Write-Host "Wallpaper        : Default Windows wallpaper"
+          Write-Host "High Performance : ON"
+          Write-Host "Animations       : OFF"
+          Write-Host "Transparency     : OFF"
           Write-Host ""
           Write-Host "=================================================="
 
