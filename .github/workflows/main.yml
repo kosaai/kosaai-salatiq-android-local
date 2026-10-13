@@ -1,49 +1,305 @@
-name: Pure RDP via Tailscale
+name: Windows VNC via Tailscale
 
 on:
   workflow_dispatch:
 
 jobs:
-  rdp-session:
+  vnc-session:
     runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-      - name: Configure RDP Service & User
+      # ============================================================
+      # RDP - يبقى موجود كخطة احتياط
+      # ============================================================
+
+      - name: Configure RDP Service and User
         shell: powershell
         run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty `
+            -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' `
+            -Name "fDenyTSConnections" `
+            -Value 0 `
+            -Force
+
           Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
           $runnerAdminPass = "WindowsRDP#2025"
+
           net user "runneradmin" $runnerAdminPass
-          echo "RDP_USER=runneradmin" >> $env:GITHUB_ENV
-          echo "RDP_PASS=$runnerAdminPass" >> $env:GITHUB_ENV
-          
+
+          "RDP_USER=runneradmin" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "RDP_PASS=$runnerAdminPass" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+
+      # ============================================================
+      # TAILSCALE
+      # ============================================================
+
       - name: Install and Connect Tailscale
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" -OutFile "tailscale-setup.exe"
-          Start-Process -FilePath ".\tailscale-setup.exe" -ArgumentList "/S" -Wait
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=github-runner-$env:GITHUB_RUN_ID
-          $tsIP = $null
-          for ($i=1; $i -le 15; $i++){ 
-            $tsIP = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4
-            if($tsIP){break}
-            Start-Sleep 4 
-          }
-          if (-not $tsIP) { 
-            exit 1 
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Invoke-WebRequest `
+            -Uri "https://pkgs.tailscale.com/stable/tailscale-setup-latest.exe" `
+            -OutFile "$env:RUNNER_TEMP\tailscale-setup.exe"
 
-      - name: Display Connection Details and Keep Alive
+          Start-Process `
+            -FilePath "$env:RUNNER_TEMP\tailscale-setup.exe" `
+            -ArgumentList "/S" `
+            -Wait
+
+          $tailscale = "$env:ProgramFiles\Tailscale\tailscale.exe"
+
+          if (-not (Test-Path $tailscale)) {
+              throw "Tailscale executable was not found."
+          }
+
+          & $tailscale up `
+            --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} `
+            --hostname=github-windows-$env:GITHUB_RUN_ID
+
+          $tsIP = $null
+
+          for ($i = 1; $i -le 20; $i++) {
+              $tsIP = (& $tailscale ip -4 2>$null | Select-Object -First 1)
+
+              if ($tsIP) {
+                  break
+              }
+
+              Start-Sleep -Seconds 3
+          }
+
+          if (-not $tsIP) {
+              throw "Tailscale connected but no IPv4 address was received."
+          }
+
+          "TAILSCALE_IP=$tsIP" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          Write-Host "Tailscale connected."
+          Write-Host "Tailscale IP: $tsIP"
+
+          & $tailscale status
+
+
+      # ============================================================
+      # TIGHTVNC 2.8.90 - OFFICIAL MSI
+      # ============================================================
+
+      - name: Download TightVNC
         shell: powershell
         run: |
-          Write-Host "================ RDP IS READY ================"
-          Write-Host "IP Address: ${{ env.TAILSCALE_IP }}"
-          Write-Host "Username  : ${{ env.RDP_USER }}"
-          Write-Host "Password  : ${{ env.RDP_PASS }}"
-          Write-Host "=============================================="
+          $url = "https://www.tightvnc.com/download/2.8.90/tightvnc-2.8.90-gpl-setup-64bit.msi"
+
+          $msi = "$env:RUNNER_TEMP\tightvnc-2.8.90.msi"
+
+          Write-Host "Downloading TightVNC 2.8.90..."
+
+          Invoke-WebRequest `
+            -Uri $url `
+            -OutFile $msi
+
+          if (-not (Test-Path $msi)) {
+              throw "TightVNC MSI download failed."
+          }
+
+          Write-Host "TightVNC downloaded successfully."
+
+
+      - name: Install and Configure TightVNC Server
+        shell: powershell
+        run: |
+          $msi = "$env:RUNNER_TEMP\tightvnc-2.8.90.msi"
+
+          # Classic VNC authentication is safest with an 8-character password.
+          $vncPassword = "Vnc25ABC"
+
+          "VNC_PASS=$vncPassword" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $msiArgs = @(
+              "/i"
+              "`"$msi`""
+              "/quiet"
+              "/norestart"
+
+              "ADDLOCAL=Server"
+
+              "SERVER_REGISTER_AS_SERVICE=1"
+              "SERVER_ADD_FIREWALL_EXCEPTION=0"
+
+              "SET_USEVNCAUTHENTICATION=1"
+              "VALUE_OF_USEVNCAUTHENTICATION=1"
+
+              "SET_PASSWORD=1"
+              "VALUE_OF_PASSWORD=$vncPassword"
+
+              "SET_ACCEPTRFBCONNECTIONS=1"
+              "VALUE_OF_ACCEPTRFBCONNECTIONS=1"
+
+              "SET_RFBPORT=1"
+              "VALUE_OF_RFBPORT=5900"
+
+              "SET_RUNCONTROLINTERFACE=1"
+              "VALUE_OF_RUNCONTROLINTERFACE=0"
+
+              "SET_ALWAYSSHARED=1"
+              "VALUE_OF_ALWAYSSHARED=1"
+
+              "SET_ACCEPTHTTPCONNECTIONS=1"
+              "VALUE_OF_ACCEPTHTTPCONNECTIONS=0"
+
+              "SET_BLOCKREMOTEINPUT=1"
+              "VALUE_OF_BLOCKREMOTEINPUT=0"
+          )
+
+          Write-Host "Installing TightVNC Server..."
+
+          $process = Start-Process `
+            -FilePath "msiexec.exe" `
+            -ArgumentList $msiArgs `
+            -Wait `
+            -PassThru
+
+          Write-Host "MSI exit code: $($process.ExitCode)"
+
+          if ($process.ExitCode -notin @(0, 3010, 1641)) {
+              throw "TightVNC installation failed with exit code $($process.ExitCode)"
+          }
+
+          Start-Sleep -Seconds 5
+
+
+      # ============================================================
+      # FIREWALL - VNC مسموح فقط لأجهزة Tailscale
+      # ============================================================
+
+      - name: Configure TightVNC Firewall
+        shell: powershell
+        run: |
+          Get-NetFirewallRule `
+            -DisplayName "TightVNC via Tailscale" `
+            -ErrorAction SilentlyContinue |
+            Remove-NetFirewallRule `
+            -ErrorAction SilentlyContinue
+
+          New-NetFirewallRule `
+            -DisplayName "TightVNC via Tailscale" `
+            -Direction Inbound `
+            -Action Allow `
+            -Protocol TCP `
+            -LocalPort 5900 `
+            -RemoteAddress "100.64.0.0/10" `
+            -Profile Any
+
+          Write-Host "Firewall rule created for Tailscale only."
+
+
+      # ============================================================
+      # START + VERIFY TIGHTVNC
+      # ============================================================
+
+      - name: Start and Verify TightVNC
+        shell: powershell
+        run: |
+          $service = Get-Service -Name "tvnserver" -ErrorAction SilentlyContinue
+
+          if (-not $service) {
+              throw "TightVNC service tvnserver was not found."
+          }
+
+          Set-Service `
+            -Name "tvnserver" `
+            -StartupType Automatic
+
+          if ($service.Status -eq "Running") {
+              Restart-Service `
+                -Name "tvnserver" `
+                -Force
+          }
+          else {
+              Start-Service `
+                -Name "tvnserver"
+          }
+
+          Start-Sleep -Seconds 5
+
+          $service = Get-Service -Name "tvnserver"
+
+          Write-Host ""
+          Write-Host "TightVNC Service:"
+          Write-Host "Status: $($service.Status)"
+
+          if ($service.Status -ne "Running") {
+              throw "TightVNC service is not running."
+          }
+
+          $listener = Get-NetTCPConnection `
+            -LocalPort 5900 `
+            -State Listen `
+            -ErrorAction SilentlyContinue
+
+          if (-not $listener) {
+              Write-Host "Port 5900 is not listening yet. Restarting service..."
+
+              Restart-Service `
+                -Name "tvnserver" `
+                -Force
+
+              Start-Sleep -Seconds 5
+
+              $listener = Get-NetTCPConnection `
+                -LocalPort 5900 `
+                -State Listen `
+                -ErrorAction SilentlyContinue
+          }
+
+          if (-not $listener) {
+              throw "TightVNC service is running but TCP port 5900 is not listening."
+          }
+
+          Write-Host ""
+          Write-Host "TightVNC is listening on TCP 5900."
+
+
+      # ============================================================
+      # CONNECTION INFORMATION
+      # ============================================================
+
+      - name: Display Connection Details
+        shell: powershell
+        run: |
+          Write-Host ""
+          Write-Host "=================================================="
+          Write-Host "             WINDOWS VNC IS READY"
+          Write-Host "=================================================="
+          Write-Host ""
+          Write-Host "Tailscale IP : ${{ env.TAILSCALE_IP }}"
+          Write-Host "VNC Port     : 5900"
+          Write-Host "VNC Password : ${{ env.VNC_PASS }}"
+          Write-Host ""
+          Write-Host "RVNC Viewer Address:"
+          Write-Host "${{ env.TAILSCALE_IP }}:5900"
+          Write-Host ""
+          Write-Host "--------------------------------------------------"
+          Write-Host "RDP Backup"
+          Write-Host "--------------------------------------------------"
+          Write-Host "RDP IP       : ${{ env.TAILSCALE_IP }}"
+          Write-Host "RDP Username : ${{ env.RDP_USER }}"
+          Write-Host "RDP Password : ${{ env.RDP_PASS }}"
+          Write-Host ""
+          Write-Host "=================================================="
+
+
+      # ============================================================
+      # KEEP WINDOWS ALIVE
+      # ============================================================
+
+      - name: Keep Session Alive
+        shell: powershell
+        run: |
+          Write-Host "Windows session is active."
+
           while ($true) {
-            Start-Sleep 300
+              Write-Host "$(Get-Date -Format 'HH:mm:ss') - Session active"
+              Start-Sleep -Seconds 300
           }
