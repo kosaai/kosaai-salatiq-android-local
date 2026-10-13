@@ -33,6 +33,247 @@ jobs:
 
 
       # ============================================================
+      # ARABIC WINDOWS SETTINGS
+      # لا نعيد تشغيل الجهاز ولا نسجل خروج
+      # ============================================================
+
+      - name: Configure Arabic Windows
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "Configuring Arabic language settings..."
+
+          $lang = "ar-SA"
+
+          # Try to install the Arabic language pack if supported
+          try {
+              if (Get-Command Install-Language -ErrorAction SilentlyContinue) {
+                  Write-Host "Installing Arabic language pack..."
+                  Install-Language $lang -CopyToSettings -ErrorAction Stop
+                  Write-Host "Arabic language pack installed."
+              }
+              else {
+                  Write-Host "Install-Language command is not available. Continuing with user language settings."
+              }
+          }
+          catch {
+              Write-Warning "Arabic language pack installation could not complete: $($_.Exception.Message)"
+          }
+
+          # Arabic first, English kept as backup
+          try {
+              $languages = New-WinUserLanguageList $lang
+              $languages.Add("en-US")
+              Set-WinUserLanguageList $languages -Force
+          }
+          catch {
+              Write-Warning "Could not update language list."
+          }
+
+          try {
+              Set-WinUILanguageOverride -Language $lang
+          }
+          catch {
+              Write-Warning "Could not set UI language override."
+          }
+
+          try {
+              Set-Culture $lang
+          }
+          catch {
+              Write-Warning "Could not set Arabic culture."
+          }
+
+          try {
+              Set-WinSystemLocale $lang
+          }
+          catch {
+              Write-Warning "Could not set system locale."
+          }
+
+          # Additional current-user locale settings
+          try {
+              Set-ItemProperty `
+                -Path "HKCU:\Control Panel\International" `
+                -Name "LocaleName" `
+                -Value "ar-SA" `
+                -Force
+          }
+          catch {
+              Write-Warning "Could not update current-user locale registry."
+          }
+
+          Write-Host ""
+          Write-Host "Arabic configuration completed."
+          Write-Host "Some Windows interface elements may require sign-out before becoming Arabic."
+
+
+      # ============================================================
+      # DISPLAY + DEFAULT WINDOWS WALLPAPER
+      # ============================================================
+
+      - name: Configure Normal Display and Windows Wallpaper
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "Configuring display..."
+
+          # ----------------------------------------------------------
+          # DPI / SCALE = 100%
+          # ----------------------------------------------------------
+
+          try {
+              New-ItemProperty `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name "LogPixels" `
+                -PropertyType DWord `
+                -Value 96 `
+                -Force | Out-Null
+
+              New-ItemProperty `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name "Win8DpiScaling" `
+                -PropertyType DWord `
+                -Value 1 `
+                -Force | Out-Null
+
+              Write-Host "Display scaling configured for 100%."
+          }
+          catch {
+              Write-Warning "Could not configure display scaling."
+          }
+
+          # ----------------------------------------------------------
+          # RESOLUTION = 1920x1080
+          # First try built-in command, otherwise use QRes.
+          # ----------------------------------------------------------
+
+          $resolutionSet = $false
+
+          try {
+              if (Get-Command Set-DisplayResolution -ErrorAction SilentlyContinue) {
+                  Set-DisplayResolution `
+                    -Width 1920 `
+                    -Height 1080 `
+                    -Force `
+                    -ErrorAction Stop
+
+                  $resolutionSet = $true
+
+                  Write-Host "Resolution set to 1920x1080 using Windows command."
+              }
+          }
+          catch {
+              Write-Warning "Built-in display resolution command failed."
+          }
+
+          if (-not $resolutionSet) {
+              try {
+                  Write-Host "Installing QRes for display configuration..."
+
+                  choco install qres -y --no-progress
+
+                  $qres = Get-Command QRes.exe -ErrorAction SilentlyContinue
+
+                  if ($qres) {
+                      & $qres.Source /x:1920 /y:1080
+
+                      Start-Sleep -Seconds 3
+
+                      Write-Host "Requested resolution: 1920x1080."
+                  }
+                  else {
+                      Write-Warning "QRes executable was not found."
+                  }
+              }
+              catch {
+                  Write-Warning "Could not change resolution using QRes."
+              }
+          }
+
+          # ----------------------------------------------------------
+          # WINDOWS DEFAULT WALLPAPER
+          # ----------------------------------------------------------
+
+          $wallpaperCandidates = @(
+              "$env:WINDIR\Web\Wallpaper\Windows\img0.jpg",
+              "$env:WINDIR\Web\Wallpaper\Windows\img19.jpg",
+              "$env:WINDIR\Web\4K\Wallpaper\Windows\img0_1920x1080.jpg"
+          )
+
+          $wallpaper = $null
+
+          foreach ($candidate in $wallpaperCandidates) {
+              if (Test-Path $candidate) {
+                  $wallpaper = $candidate
+                  break
+              }
+          }
+
+          if (-not $wallpaper) {
+              $wallpaper = Get-ChildItem `
+                "$env:WINDIR\Web\Wallpaper" `
+                -Recurse `
+                -Include "*.jpg","*.png" `
+                -ErrorAction SilentlyContinue |
+                Select-Object -First 1 -ExpandProperty FullName
+          }
+
+          if ($wallpaper) {
+              Write-Host "Using wallpaper:"
+              Write-Host $wallpaper
+
+              Set-ItemProperty `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name Wallpaper `
+                -Value $wallpaper `
+                -Force
+
+              Set-ItemProperty `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name WallpaperStyle `
+                -Value "10" `
+                -Force
+
+              Set-ItemProperty `
+                -Path "HKCU:\Control Panel\Desktop" `
+                -Name TileWallpaper `
+                -Value "0" `
+                -Force
+
+              Add-Type @"
+              using System;
+              using System.Runtime.InteropServices;
+
+              public class Wallpaper {
+                  [DllImport("user32.dll", SetLastError=true)]
+                  public static extern bool SystemParametersInfo(
+                      int uAction,
+                      int uParam,
+                      string lpvParam,
+                      int fuWinIni
+                  );
+              }
+              "@
+
+              [Wallpaper]::SystemParametersInfo(
+                  20,
+                  0,
+                  $wallpaper,
+                  3
+              ) | Out-Null
+
+              Write-Host "Default Windows wallpaper applied."
+          }
+          else {
+              Write-Warning "No Windows wallpaper was found."
+          }
+
+          Write-Host ""
+          Write-Host "Display configuration finished."
+
+
+      # ============================================================
       # TAILSCALE
       # ============================================================
 
@@ -111,7 +352,6 @@ jobs:
         run: |
           $msi = "$env:RUNNER_TEMP\tightvnc-2.8.90.msi"
 
-          # Classic VNC authentication is safest with an 8-character password.
           $vncPassword = "Vnc25ABC"
 
           "VNC_PASS=$vncPassword" | Out-File -FilePath $env:GITHUB_ENV -Append
@@ -286,6 +526,14 @@ jobs:
           Write-Host "RDP IP       : ${{ env.TAILSCALE_IP }}"
           Write-Host "RDP Username : ${{ env.RDP_USER }}"
           Write-Host "RDP Password : ${{ env.RDP_PASS }}"
+          Write-Host ""
+          Write-Host "--------------------------------------------------"
+          Write-Host "Windows preferences"
+          Write-Host "--------------------------------------------------"
+          Write-Host "Language      : Arabic (ar-SA) requested"
+          Write-Host "Resolution    : 1920x1080 requested"
+          Write-Host "Scale         : 100%"
+          Write-Host "Wallpaper     : Default Windows wallpaper"
           Write-Host ""
           Write-Host "=================================================="
 
