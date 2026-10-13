@@ -371,6 +371,309 @@ jobs:
 
 
       # ============================================================
+      # MICROSOFT STORE
+      # Best-effort only - runner may not expose full Store UI
+      # ============================================================
+
+      - name: Enable Microsoft Store
+        shell: powershell
+        continue-on-error: true
+        run: |
+          Write-Host "Checking Microsoft Store..."
+
+          $store = Get-AppxPackage -AllUsers Microsoft.WindowsStore -ErrorAction SilentlyContinue
+
+          if ($store) {
+              Write-Host "Microsoft Store package already exists."
+
+              try {
+                  Add-AppxPackage `
+                    -DisableDevelopmentMode `
+                    -Register "$($store.InstallLocation)\AppxManifest.xml" `
+                    -ErrorAction Stop
+
+                  Write-Host "Microsoft Store registered successfully."
+              }
+              catch {
+                  Write-Warning "Microsoft Store registration failed."
+              }
+          }
+          else {
+              Write-Host "Microsoft Store package is missing."
+              Write-Host "Trying wsreset -i..."
+
+              try {
+                  Start-Process `
+                    -FilePath "wsreset.exe" `
+                    -ArgumentList "-i" `
+                    -Wait `
+                    -WindowStyle Hidden
+
+                  Start-Sleep -Seconds 15
+              }
+              catch {
+                  Write-Warning "wsreset -i could not install Microsoft Store."
+              }
+
+              $store = Get-AppxPackage -AllUsers Microsoft.WindowsStore -ErrorAction SilentlyContinue
+
+              if ($store) {
+                  Write-Host "Microsoft Store installed."
+              }
+              else {
+                  Write-Warning "Microsoft Store UI is still unavailable."
+                  Write-Host "This will not block Apple Devices installation through winget/msstore."
+              }
+          }
+
+
+      # ============================================================
+      # WINGET
+      # ============================================================
+
+      - name: Verify Winget
+        shell: powershell
+        run: |
+          Write-Host "Checking winget..."
+
+          $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
+
+          if (-not $winget) {
+              throw "winget.exe was not found on this runner."
+          }
+
+          Write-Host "Winget found:"
+          winget --version
+
+          Write-Host ""
+          Write-Host "Winget sources:"
+          winget source list
+
+
+      # ============================================================
+      # APPLE DEVICES
+      # Microsoft Store Product ID: 9NP83LWLPZ9K
+      # ============================================================
+
+      - name: Install Apple Devices
+        shell: powershell
+        run: |
+          Write-Host "Checking Apple Devices..."
+
+          $appleDevices = Get-AppxPackage AppleInc.AppleDevices -ErrorAction SilentlyContinue
+
+          if ($appleDevices) {
+              Write-Host "Apple Devices is already installed."
+              Write-Host $appleDevices.PackageFullName
+          }
+          else {
+              Write-Host "Installing Apple Devices from Microsoft Store source..."
+
+              winget install `
+                --id 9NP83LWLPZ9K `
+                --source msstore `
+                --exact `
+                --accept-source-agreements `
+                --accept-package-agreements `
+                --silent
+
+              if ($LASTEXITCODE -ne 0) {
+                  Write-Warning "First Apple Devices installation attempt returned exit code $LASTEXITCODE."
+              }
+
+              Start-Sleep -Seconds 10
+
+              $appleDevices = Get-AppxPackage AppleInc.AppleDevices -ErrorAction SilentlyContinue
+
+              if (-not $appleDevices) {
+                  throw "Apple Devices installation failed."
+              }
+
+              Write-Host "Apple Devices installed successfully."
+              Write-Host $appleDevices.PackageFullName
+          }
+
+          "APPLE_DEVICES_PATH=$($appleDevices.InstallLocation)" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+
+      # ============================================================
+      # VERIFY APPLE DEVICES FILES
+      # ============================================================
+
+      - name: Verify Apple Devices Components
+        shell: powershell
+        continue-on-error: true
+        run: |
+          $appleDevices = Get-AppxPackage AppleInc.AppleDevices -ErrorAction SilentlyContinue
+
+          if (-not $appleDevices) {
+              Write-Warning "Apple Devices package not found."
+              exit 0
+          }
+
+          Write-Host "Apple Devices path:"
+          Write-Host $appleDevices.InstallLocation
+
+          Write-Host ""
+          Write-Host "Apple Mobile Device related files:"
+
+          Get-ChildItem `
+            $appleDevices.InstallLocation `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.Name -match "AppleMobileDevice|MobileDevice|usbmux"
+            } |
+            ForEach-Object {
+                Write-Host $_.FullName
+            }
+
+
+      # ============================================================
+      # LIBIMOBILEDEVICE WINDOWS BINARIES
+      # ============================================================
+
+      - name: Install libimobiledevice Windows Tools
+        shell: powershell
+        run: |
+          $installDir = "C:\libimobiledevice"
+          $zipPath = "$env:RUNNER_TEMP\libimobiledevice-windows.zip"
+
+          Write-Host "Preparing libimobiledevice Windows tools..."
+
+          if (Test-Path $installDir) {
+              Remove-Item `
+                -Path $installDir `
+                -Recurse `
+                -Force `
+                -ErrorAction SilentlyContinue
+          }
+
+          New-Item `
+            -ItemType Directory `
+            -Path $installDir `
+            -Force |
+            Out-Null
+
+          Write-Host "Finding latest release..."
+
+          $release = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/jrjr/libimobiledevice-windows/releases/latest" `
+            -Headers @{
+                "User-Agent" = "GitHub-Actions"
+            }
+
+          $asset = $release.assets |
+            Where-Object {
+                $_.name -match "(w64|win64|x64).*\.zip$|\.zip$"
+            } |
+            Select-Object -First 1
+
+          if (-not $asset) {
+              throw "No Windows ZIP asset found in latest libimobiledevice release."
+          }
+
+          Write-Host "Downloading:"
+          Write-Host $asset.name
+
+          Invoke-WebRequest `
+            -Uri $asset.browser_download_url `
+            -OutFile $zipPath
+
+          if (-not (Test-Path $zipPath)) {
+              throw "libimobiledevice ZIP download failed."
+          }
+
+          Expand-Archive `
+            -Path $zipPath `
+            -DestinationPath $installDir `
+            -Force
+
+          Write-Host "Searching for idevice_id.exe..."
+
+          $idevice = Get-ChildItem `
+            -Path $installDir `
+            -Filter "idevice_id.exe" `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if (-not $idevice) {
+              throw "idevice_id.exe was not found after extraction."
+          }
+
+          $binDir = $idevice.DirectoryName
+
+          Write-Host "libimobiledevice binaries:"
+          Write-Host $binDir
+
+          "LIBIMOBILEDEVICE_PATH=$binDir" |
+            Out-File -FilePath $env:GITHUB_ENV -Append
+
+          $currentPath = [Environment]::GetEnvironmentVariable(
+              "Path",
+              "Machine"
+          )
+
+          if ($currentPath -notlike "*$binDir*") {
+              [Environment]::SetEnvironmentVariable(
+                  "Path",
+                  "$currentPath;$binDir",
+                  "Machine"
+              )
+          }
+
+          $env:Path += ";$binDir"
+
+          Write-Host ""
+          Write-Host "idevice_id version/test:"
+
+          & $idevice.FullName --version 2>$null
+
+          Write-Host ""
+          Write-Host "libimobiledevice installation completed."
+
+
+      # ============================================================
+      # VERIFY IOS TOOLCHAIN
+      # ============================================================
+
+      - name: Verify iOS Toolchain
+        shell: powershell
+        run: |
+          $binDir = "${{ env.LIBIMOBILEDEVICE_PATH }}"
+
+          if (-not $binDir) {
+              throw "LIBIMOBILEDEVICE_PATH is missing."
+          }
+
+          $idevice = Join-Path $binDir "idevice_id.exe"
+
+          if (-not (Test-Path $idevice)) {
+              throw "idevice_id.exe is missing."
+          }
+
+          Write-Host "=============================================="
+          Write-Host "iOS toolchain ready"
+          Write-Host "=============================================="
+
+          Write-Host "Apple Devices:"
+          Get-AppxPackage AppleInc.AppleDevices |
+            Select-Object Name, PackageFullName, InstallLocation |
+            Format-List
+
+          Write-Host ""
+          Write-Host "idevice_id:"
+          Write-Host $idevice
+
+          Write-Host ""
+          Write-Host "Important:"
+          Write-Host "Remote iPhone connection can later be selected with:"
+          Write-Host 'USBMUXD_SOCKET_ADDRESS=<ANDROID_TAILSCALE_IP>:27015'
+
+
+      # ============================================================
       # TAILSCALE
       # ============================================================
 
@@ -633,6 +936,16 @@ jobs:
           Write-Host "High Performance : ON"
           Write-Host "Animations       : OFF"
           Write-Host "Transparency     : OFF"
+          Write-Host ""
+          Write-Host "--------------------------------------------------"
+          Write-Host "iOS Tools"
+          Write-Host "--------------------------------------------------"
+          Write-Host "Apple Devices    : Installed"
+          Write-Host "libimobiledevice : ${{ env.LIBIMOBILEDEVICE_PATH }}"
+          Write-Host ""
+          Write-Host "Remote usbmuxd example:"
+          Write-Host '$env:USBMUXD_SOCKET_ADDRESS="100.105.112.115:27015"'
+          Write-Host 'idevice_id -l'
           Write-Host ""
           Write-Host "=================================================="
 
